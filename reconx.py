@@ -4,10 +4,15 @@
 Some simple tools to handle RECONX output.
 '''
 import re
+import os
 import datetime as dt
 
 import numpy as np
 import matplotlib.pyplot as plt
+
+
+def dot_product(u, v):
+     return sum([un*vn for un, vn in zip(u, v)])
 
 
 def read_separator(filename):
@@ -44,7 +49,7 @@ def read_separator(filename):
     return data
 
 
-def read_nulls(filename):
+def read_nulls(filename, reorder=False):
     '''
     Read a null file and return a dictionary-like data object.
 
@@ -52,6 +57,9 @@ def read_nulls(filename):
     ----------
     filename : str
         Name of null file to open.
+    reorder : bool, defaults to False
+        Reorder the  points in the file such that they represent, in order,
+        a trace along a magnetic field line.
 
     Returns
     -------
@@ -86,6 +94,17 @@ def read_nulls(filename):
         parts = l.split()
         for v, p in zip(var, parts):
             data[v][i] = p
+
+    # Re-arrange points:
+    if reorder:
+        # Find the spot where the trace flips direction:
+        r = np.sqrt(data['X']**2 + data['Y']**2 + data['Z']**2)
+        i = np.argmax(np.abs(r[1:] - r[:-1]))
+
+        # Re-sort the lines:
+        data['X'] = np.append(data['X'][-1:i+1:-1], data['X'][:i])
+        data['Y'] = np.append(data['Y'][-1:i+1:-1], data['Y'][:i])
+        data['Z'] = np.append(data['Z'][-1:i+1:-1], data['Z'][:i])
 
     return data
 
@@ -168,20 +187,39 @@ class NullPair(dict):
         The XYZ position of the positive and negative nulls, respectively
     '''
 
-    def __init__(self, x_pos, x_neg, time, inull, iline=1):
+    def __init__(self, x_pos, x_neg, time, inull, path='', iline=1):
         # Initialize as a dictionary:
         super(NullPair, self).__init__()
 
         # Set positions:
         self['x_pos'], self['x_neg'] = x_pos, x_neg
+        self['time'] = time
 
         # Get magnetic field line info for each null.
-        f_pos = f'null_line_neg_o{inull:02d}_{iline:03d}' + \
-                f'_e{time:%Y%m%d-%H%M%S}.dat'
+        f_pos = path + f'null_line_pls_o{inull:02d}_{iline:03d}' + \
+            f'_e{time:%Y%m%d-%H%M%S}.dat'
+        f_neg = path + f'null_line_neg_o{inull:02d}_{iline:03d}' + \
+            f'_e{time:%Y%m%d-%H%M%S}.dat'
+        self['linefiles'] = [f_pos, f_neg]
+
+        # Are there line files for this null? If not, crash.
+        if not os.path.exists(f_pos) or not os.path.exists(f_neg):
+            # Line tracing failed for this null. Fill defaults and stop.
+            self['posline'] = False
+            self['negline'] = False
+            return
 
         # Open field line file and read.
-        b = read_nulls(f_pos)
+        self['posline'] = read_nulls(f_pos, reorder=True)
+        self['negline'] = read_nulls(f_neg, reorder=True)
 
+    def calc_geopot(self):
+        '''
+        Calculate potential drop across geoeffective length, save as
+        self['geopot']. Units are kV.
+        '''
+
+        self['geopot'] = 0
 
     def __repr__(self):
         return f'NullPair at [{self["x_pos"]}, {self["x_neg"]}]'
@@ -194,7 +232,7 @@ class NullGroup(list):
     To instantiate,
     '''
 
-    def __init__(self, nullfile, rundir):
+    def __init__(self, nullfile, rundir=None):
         # Initialize as a dictionary:
         super(NullGroup, self).__init__()
 
@@ -205,6 +243,11 @@ class NullGroup(list):
         elif 'Neg' in nullfile:
             f_nega = nullfile
             f_plus = nullfile.replace('Neg', 'Plus')
+
+        # Get the path of the files:
+        path = '/'.join(nullfile.split('/')[:-1])
+        if path:
+            path = path + '/'
 
         # Open null files and start mining information.
         posn, negn = read_nulls(f_plus), read_nulls(f_nega)
@@ -217,4 +260,5 @@ class NullGroup(list):
         for i in range(self.nnulls):
             x_pos = np.array([posn['X'][i], posn['Y'][i], posn['Z'][i]])
             x_neg = np.array([negn['X'][i], negn['Y'][i], negn['Z'][i]])
-            self.append(NullPair(x_pos, x_neg, self.time))
+            self.append(NullPair(x_pos, x_neg, self.time,
+                                 path=path, inull=i+1))
