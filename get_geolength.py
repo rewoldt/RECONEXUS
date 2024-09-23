@@ -1,7 +1,7 @@
-#!/usr/bin/env python                                                                                                       
+#!/usr/bin/env python
 
-'''                                                                                                                          
-Some simple tools to fit ray traces and calculate geoeffective length                                                        
+'''
+Some simple tools to fit ray traces and calculate geoeffective length
 '''
 
 import numpy as np
@@ -15,69 +15,83 @@ from spacepy.pybats import rim
 from datetime import datetime
 from scipy.stats import pearsonr
 
-def cross_product(u,v):
-     dim = len(u)
-     s = []
-     for i in range(dim):
-          if i == 0:
-               j,k = 1,2
-               s.append(u[j]*v[k] - u[k]*v[j])
-          elif i == 1:
-               j,k = 2,0
-               s.append(u[j]*v[k] - u[k]*v[j])
-          else:
-               j,k = 0,1
-               s.append(u[j]*v[k] - u[k]*v[j])
-     return s
 
-def dot_product(u,v):
-     return sum([un*vn for un,vn in zip(u,v)])
+def cross_product(u, v):
+    dim = len(u)
+    s = []
+    for i in range(dim):
+        if i == 0:
+            j, k = 1, 2
+            s.append(u[j]*v[k] - u[k]*v[j])
+        elif i == 1:
+            j, k = 2, 0
+            s.append(u[j]*v[k] - u[k]*v[j])
+        else:
+            j, k = 0, 1
+            s.append(u[j]*v[k] - u[k]*v[j])
+    return s
 
-def calc_uxb(u,B):
-     uxb = cross_product(u,B)
-     return uxb
+
+def dot_product(u, v):
+    return sum([un*vn for un, vn in zip(u, v)])
+
+
+def calc_uxb(u, B):
+    uxb = cross_product(u, B)
+    return uxb
+
 
 def get_potential(null_file_neg, null_file_pls, n):
 
-     Xp_sorted,Yp_sorted,Zp_sorted = get_footprints.sort_trace(null_file_pls)
-     Xn_sorted,Yn_sorted,Zn_sorted = get_footprints.sort_trace(null_file_neg)
-     #print (Xn_sorted, Yn_sorted, Zn_sorted)
+    Xp_sorted, Yp_sorted, Zp_sorted = get_footprints.sort_trace(null_file_pls)
+    Xn_sorted, Yn_sorted, Zn_sorted = get_footprints.sort_trace(null_file_neg)
+    # print (Xn_sorted, Yn_sorted, Zn_sorted)
 
-     Xn = Xn_sorted[n:]
-     Yn = Yn_sorted[n:]
-     Zn = Zn_sorted[n:]
-     Xp = Xp_sorted[n:]
-     Yp = Yp_sorted[n:]
-     Zp = Zp_sorted[n:]
+    Xn = Xn_sorted[n:]
+    Yn = Yn_sorted[n:]
+    Zn = Zn_sorted[n:]
+    Xp = Xp_sorted[n:]
+    Yp = Yp_sorted[n:]
+    Zp = Zp_sorted[n:]
 
-     RE2km = 6378.14# *(10**3) #km
+    RE2km = 6378.14  # *(10**3) #km
 
-     #geo_potential = []
-     dist = []
-     length = []
-     length_dict = {}
+    # geo_potential = []
+    dist = []
+    length = []
+    length_dict = {}
 
-     uxb = calc_uxb(u,B)
+    uxb = calc_uxb(u, B)
 
-     for i in range(len(Xn)):
-          for j in range(len(Xp)):
-               distance = (np.sqrt((Xn[i]-Xp[j])**2 + (Yn[i]-Yp[j])**2 + (Zn[i]-Zp[j])**2)*RE2km)
-               dist.append(distance)
-               L = (Xn[i]-Xp[j])*RE2km, (Yn[i]-Yp[j])*RE2km, (Zn[i]-Zp[j])*RE2km
-               length.append([(Xn[i]-Xp[j])*RE2km, (Yn[i]-Yp[j])*RE2km, (Zn[i]-Zp[j])*RE2km])
+    for i in range(len(Xn)):
+        for j in range(len(Xp)):
+            distance = (np.sqrt((Xn[i]-Xp[j])**2 +
+                                (Yn[i]-Yp[j])**2 +
+                                (Zn[i]-Zp[j])**2)*RE2km)
+            dist.append(distance)
+            L = (Xn[i]-Xp[j])*RE2km, (Yn[i]-Yp[j])*RE2km, (Zn[i]-Zp[j])*RE2km
+            length.append([(Xn[i]-Xp[j])*RE2km,
+                           (Yn[i]-Yp[j])*RE2km,
+                           (Zn[i]-Zp[j])*RE2km])
 
-     min_distance_index = np.argmin(dist)
-     min_distance = dist[min_distance_index]
+    min_distance_index = np.argmin(dist)
+    min_distance = dist[min_distance_index]
 
-     #print (min_distance_index, min_distance, length[min_distance_index], length[min_distance_index][0], length[min_distance_index][1], length[min_distance_index][2], (np.sqrt((length[min_distance_index][0])**2 + (length[min_distance_index][1])**2 + (length[min_distance_index][2])**2)))
+    #print (min_distance_index, min_distance, length[min_distance_index],
+    #       length[min_distance_index][0], length[min_distance_index][1],
+    #       length[min_distance_index][2],
+    #       (np.sqrt((length[min_distance_index][0])**2 +
+    #       (length[min_distance_index][1])**2 +
+    #       (length[min_distance_index][2])**2)))
 
-     geo_potential = dot_product(uxb,length[min_distance_index])
+    geo_potential = dot_product(uxb, length[min_distance_index])
 
-     return dist, abs(geo_potential)
+    return dist, abs(geo_potential)
+
 
 def plot_tracers_3D(trace_file_neg, trace_file_pls, null_file_neg, null_file_pls, null_number):
     # Read the tracer points from the files
-    
+
     # Extract the null points based on null number
     Xn_tracer = trace_file_neg['X']
     Yn_tracer = trace_file_neg['Y']
@@ -85,7 +99,7 @@ def plot_tracers_3D(trace_file_neg, trace_file_pls, null_file_neg, null_file_pls
     Xp_tracer = trace_file_pls['X']
     Yp_tracer = trace_file_pls['Y']
     Zp_tracer = trace_file_pls['Z']
-    
+
 
     # Read the null points from the files
     null_neg = reconx.read_nulls(null_file_neg)
@@ -123,7 +137,7 @@ def plot_tracers_3D(trace_file_neg, trace_file_pls, null_file_neg, null_file_pls
 
 def plot_tracers_2D(trace_file_neg, trace_file_pls, null_file_neg, null_file_pls, null_number):
     # Read the tracer points from the files
-    
+
     # Extract the null points based on null number
     Xn_tracer = trace_file_neg['X']
     Yn_tracer = trace_file_neg['Y']
@@ -131,7 +145,7 @@ def plot_tracers_2D(trace_file_neg, trace_file_pls, null_file_neg, null_file_pls
     Xp_tracer = trace_file_pls['X']
     Yp_tracer = trace_file_pls['Y']
     Zp_tracer = trace_file_pls['Z']
-    
+
 
     # Read the null points from the files
     null_neg = reconx.read_nulls(null_file_neg)
@@ -145,9 +159,9 @@ def plot_tracers_2D(trace_file_neg, trace_file_pls, null_file_neg, null_file_pls
     Yp_null = null_pls['Y'][null_number]
     Zp_null = null_pls['Z'][null_number]
     print (Xn_null, Yn_null, Zn_null, Xp_null, Yp_null, Zp_null)
-    
+
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 5))  # Create two subplots side by side
-    
+
     # First subplot: y=0
     ax1.plot(0, 0, marker='o', markersize=5, color='Black')  # Change 's' to 'marker' and 'markersize' for plot
     # Plot traces
@@ -159,7 +173,7 @@ def plot_tracers_2D(trace_file_neg, trace_file_pls, null_file_neg, null_file_pls
     ax1.set_title('y=0')
     ax1.set(xlabel='X (RE)', ylabel='Z (RE)')
     ax1.set_aspect('equal')
-    
+
     # Second subplot: z=0
     ax2.plot(0, 0, marker='o', markersize=5, color='Black')  # Change 's' to 'marker' and 'markersize' for plot
     # Plot traces
@@ -171,7 +185,7 @@ def plot_tracers_2D(trace_file_neg, trace_file_pls, null_file_neg, null_file_pls
     ax2.set_title('z=0')
     ax2.set(xlabel='X (RE)', ylabel='Y (RE)')
     ax2.set_aspect('equal')
-    
+
     # Display legends and show plots
     ax1.legend()
     plt.tight_layout()  # Adjust the layout to prevent overlap
@@ -182,10 +196,10 @@ def plot_tracers_2D(trace_file_neg, trace_file_pls, null_file_neg, null_file_pls
 def plot_results(results):
     # Sort the timestamps
     sorted_timestamps = sorted(results.keys(), key=lambda x: datetime.strptime(x, '%H%M%S'))
-    
+
     # Collect all null numbers
     unique_null_numbers = {null_number for timestamp_data in results.values() for null_number in timestamp_data.keys()}
-    
+
     for null_number in unique_null_numbers:
         times = []
         mean_cpcp_values = []
@@ -200,12 +214,12 @@ def plot_results(results):
                     all_cpcp = []
                     all_potdrop = []
                     all_geo_potential = []
-                    
+
                     for null_tag in results[timestamp][null_number]:
                         all_cpcp.extend(results[timestamp][null_number][null_tag]['cpcp'])
                         all_potdrop.extend(results[timestamp][null_number][null_tag]['potdrop'])
                         all_geo_potential.extend(results[timestamp][null_number][null_tag]['geo_potential'])
-                    
+
                     # Calculate the mean values
                     mean_cpcp_values.append(np.mean(all_cpcp))
                     mean_potdrop_values.append(np.mean(all_potdrop))
@@ -214,7 +228,7 @@ def plot_results(results):
                     # Handle missing data
                     print(f"Missing data for {null_number} at {timestamp}")
                     continue
-        
+
         # Plotting
         #plt.semilogy(times, mean_cpcp_values, marker='^', linestyle=':', color='b')
         #plt.semilogy(times, mean_potdrop_values, marker='s', linestyle='--', color='g')
@@ -224,7 +238,7 @@ def plot_results(results):
 
         # Calculate correlation coefficient
     correlation, _ = pearsonr(mean_geo_potential_values, mean_cpcp_values)
-    
+
     # Add text for correlation
     plt.text(0.05, 0.95, f'Correlation: {correlation:.2f}', ha='left', va='center', transform=plt.gca().transAxes)
     plt.xscale('log')
@@ -240,10 +254,10 @@ def plot_results(results):
     plt.grid(True)
     plt.xticks(rotation=45)
     plt.tight_layout()
-    
+
     # Save the plot if needed
     plt.savefig('all_nulls_mean_comparison_plot.png', dpi=300)
-    
+
     # Show the plot
     plt.show()
 
@@ -258,7 +272,7 @@ def plot_mean_cpcp_vs_geo_potential(results):
             cpcp_values = []
             geo_potential_values = []
             potdrop_values = []
-            
+
             for null_tag in results[timestamp][null_number]:
                 cpcp_values.extend(results[timestamp][null_number][null_tag]['cpcp'])
                 geo_potential_values.extend(results[timestamp][null_number][null_tag]['geo_potential'])
@@ -268,7 +282,7 @@ def plot_mean_cpcp_vs_geo_potential(results):
                 mean_cpcp = np.mean(cpcp_values)
                 mean_geo_potential = np.mean(geo_potential_values)
                 mean_potdrop = np.mean(potdrop_values)
-                
+
                 mean_cpcp_values.append(mean_cpcp)
                 mean_geo_potential_values.append(mean_geo_potential)
                 mean_potdrop_values.append(mean_potdrop)
@@ -289,7 +303,7 @@ def plot_mean_cpcp_vs_geo_potential(results):
     # Plotting Mean Potdrop vs Mean Geo Potential
     #plt.scatter(mean_geo_potential_values, mean_potdrop_values, marker='8', color='r', s=80, label='Iono Footprint Potential Drop vs GEL Potential')
     plt.scatter(mean_geo_potential_values, mean_potdrop_values, s=70, color='indianred', label='Iono Footprint Potential Drop vs GEL Potential')
-    
+
     # Calculate correlation coefficient for Mean Potdrop vs Mean Geo Potential
     #correlation_potdrop, _ = pearsonr(mean_geo_potential_values, mean_potdrop_values)
     # Add text for correlation for Mean Potdrop vs Mean Geo Potential
@@ -315,22 +329,22 @@ if __name__ == '__main__':
     ux = -400 * 10**3  # m/s
     uy = 0
     uz = 0
-    
+
     Bx = 0
     By = -2 * 10**-9  # T
     Bz = -10 * 10**-9  # T
-    
+
     # ux = -450 * 10**3  # m/s
     # uy = 0
     # uz = 0
-    
+
     # Bx = 0
     # By = 2 * 10**-9  # T
     # Bz = -10 * 10**-9  # T
-    
+
     B = [Bx, By, Bz]
     u = [ux, uy, uz]
-    
+
     uxb = calc_uxb(u, B)
 
     # Open a file:
@@ -344,7 +358,7 @@ if __name__ == '__main__':
     #         # Extract timestamp from the filename
     #         timestamp = filename.split("_")[1]
     #         iono[timestamp] = rim.Iono(os.path.join(directory_ie, filename))
-    
+
     # Define the directory containing the trace files
     directory = "/Users/rewoldt/RECONX/run/"
     #directory = "/Users/rewoldt/RECONX/run_amr/"
@@ -353,8 +367,8 @@ if __name__ == '__main__':
     #pattern = re.compile(r"null_line_neg_[ns]\d+_\d{3}_e\d+-\d{6}\.dat")
     #pattern = re.compile(r"null_line_neg_[ns]\d+_001_e\d+-\d{6}\.dat")
     results = {}
-    
-    
+
+
     # Loop over each trace file in the directory
     for filename in os.listdir(directory):
         if filename.endswith(".dat") and pattern.match(filename):
@@ -371,45 +385,45 @@ if __name__ == '__main__':
             #nulls_pls = directory+f"PlusNulls_n03030603.dat"
             null_number_plot = int(null_number) - 1
             print (null_number, null_number_plot)
-            
+
             try:
                 # Read negative and positive trace files
                 ray_neg = reconx.read_nulls(os.path.join(directory, filename))
                 ray_pls = reconx.read_nulls(os.path.join(directory, filename.replace("neg", "pls")))
-                
+
                 # Calculate potential drop for the positive/negative pair
                 dist, geo_potential = get_potential(ray_neg, ray_pls, -50)
                 #dist, geo_potential = get_potential(ray_neg, ray_pls, 1)
-    
+
                 # Initialize the dictionary for this timestamp if it doesn't exist
                 if timestamp not in results:
                     results[timestamp] = {}
-                
+
                 # Initialize the dictionary for this null_number if it doesn't exist
                 if null_number not in results[timestamp]:
                     #results[timestamp][null_number] = {"geo_potential": [], "cpcp": [], "potdrop": []}
                     results[timestamp][null_number] = {}
                     #results[timestamp][null_number] = {"geo_potential": [], "potdrop": []}
-                    
+
                 # Initialize the dictionary for this null_number if it doesn't exist
                 if null_tag not in results[timestamp][null_number]:
                     results[timestamp][null_number][null_tag] = {"geo_potential": [], "cpcp": [], "potdrop": []}
                     #results[timestamp][null_number] = {"geo_potential": [], "potdrop": []}
-                
+
                 if null_number_plot < 80:
                     plot_tracers_3D(ray_pls, ray_neg, nulls_pls, nulls_neg, null_number_plot)
                     plot_tracers_2D(ray_pls, ray_neg, nulls_pls, nulls_neg, null_number_plot)
-                
+
                 # Get footprints for negative and positive traces
                 # Xp_sorted, Yp_sorted, Zp_sorted = get_footprints.sort_trace(ray_pls)
                 # Xn_sorted, Yn_sorted, Zn_sorted = get_footprints.sort_trace(ray_neg)
-                
+
                 # coord_pls = get_footprints.get_footprints(Xp_sorted, Yp_sorted, Zp_sorted)
                 # coord_neg = get_footprints.get_footprints(Xn_sorted, Yn_sorted, Zn_sorted)
-        
+
                 # # Calculate potential drop for the positive/negative pair
                 # pots = get_iono_drop.get_iono_drop(iono[timestamp], coord_pls, coord_neg)
-    
+
                 # # Extract the values of cpcp and potdrop from the pots dictionary
                 # cpcp = pots["cpcp"]
                 # potdrop = pots["potdrop"]
@@ -418,10 +432,10 @@ if __name__ == '__main__':
                 results[timestamp][null_number][null_tag]["geo_potential"].append(geo_potential)
                 # results[timestamp][null_number][null_tag]["cpcp"].append(cpcp)
                 # results[timestamp][null_number][null_tag]["potdrop"].append(potdrop)
-    
+
             except FileNotFoundError:
                 print(f"Null pair not found for {filename}. Skipping...")
-                
+
     # Example call to the plot function
     #plot_results(results)
     plot_mean_cpcp_vs_geo_potential(results)
