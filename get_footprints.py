@@ -8,20 +8,22 @@ Some tools to locate the footprints of field line traces
 import numpy as np
 import reconx
 
-def sort_trace_old(X,Y,Z):
+
+def sort_trace_old(X, Y, Z):
 
     ''' sort trace data if not sorted by distance '''
 
     data = np.concatenate((X[:, np.newaxis],
-                       Y[:, np.newaxis],
-                       Z[:, np.newaxis]),
-                       axis=1)
+                           Y[:, np.newaxis],
+                           Z[:, np.newaxis]),
+                          axis=1)
     distances = np.linalg.norm(data, axis=1)
     # Get sorted indices
     sorted_indices = np.argsort(distances)
     # Sort the data based on the indices
     sorted_data = data[sorted_indices]
     return sorted_data
+
 
 def sort_trace(null_file):
 
@@ -32,9 +34,9 @@ def sort_trace(null_file):
     Z = null_file['Z']
 
     data = np.concatenate((X[:, np.newaxis],
-                       Y[:, np.newaxis],
-                       Z[:, np.newaxis]),
-                       axis=1)
+                           Y[:, np.newaxis],
+                           Z[:, np.newaxis]),
+                          axis=1)
     distances = np.linalg.norm(data, axis=1)
     # Get sorted indices
     sorted_indices = np.argsort(distances)
@@ -42,15 +44,17 @@ def sort_trace(null_file):
     sorted_data = data[sorted_indices]
 
     X_new, Y_new, Z_new = sorted_data[:,0],sorted_data[:,1],sorted_data[:,2]
-    print (X_new, Y_new, Z_new)
+    print(X_new, Y_new, Z_new)
 
     return X_new, Y_new, Z_new
+
 
 def get_footprints(sorted_data):
 
     ''' get the footprints corresponding to each null '''
 
     return sorted_data[0].tolist()
+
 
 if __name__ == '__main__':
 
@@ -63,7 +67,7 @@ if __name__ == '__main__':
     Xp = ray_pls['X']
     Yp = ray_pls['Y']
     Zp = ray_pls['Z']
-    
+
     Xp_sorted,Yp_sorted,Zp_sorted = sort_trace(ray_pls)
     Xn_sorted,Yn_sorted,Zn_sorted = sort_trace(ray_neg)
     #Pp = sort_trace(Xp,Yp,Zp)
