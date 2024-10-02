@@ -5,14 +5,42 @@ Some simple tools to handle RECONX output.
 '''
 import re
 import os
+from glob import glob
 import datetime as dt
 
 import numpy as np
 import matplotlib.pyplot as plt
 
+from spacepy.pybats import ImfInput
+
+# Important constants:
+RE = 6371000  # in meters!
+
 
 def dot_product(u, v):
-     return sum([un*vn for un, vn in zip(u, v)])
+    return sum([un*vn for un, vn in zip(u, v)])
+
+
+def cross_product(u, v):
+    '''
+    Calculate and return $u \times v$ for inputs u, v.
+
+    Paramters
+    =========
+    u, v : 3-element numpy vectors
+        Vectors to use for cross product.
+
+    Returns
+    =======
+    w : 3-element numpy vector
+        Cross product result.
+    '''
+
+    w = np.array([u[1]*v[2] - u[2]*v[1],
+                  u[2]*v[0] - u[0]*v[2],
+                  u[0]*v[1] - u[1]*v[0]])
+
+    return w
 
 
 def read_separator(filename):
@@ -185,15 +213,31 @@ class NullPair(dict):
     ----------
     x_pos, x_neg : dmarray
         The XYZ position of the positive and negative nulls, respectively
+    inull : integer
+        The number of the null pair.
+    usw, bsw : 3-element numpy vectors
+        The solar wind velocity and magnetic field corresponding to the time
+        that the null was found. Units should be km/s and nT, respectively.
+    path : str, defaults to empty string
+        Path to file location, used for opening line files.
+    time : datetime.datetime, defaults to None
+        Date time corresponding to point in time when null found.
+    iline : int, defaults to 1
+        If there are more than 1 lines associated with this null, this
+        kwarg sets which to read.
     '''
 
-    def __init__(self, x_pos, x_neg, time, inull, path='', iline=1):
+    def __init__(self, x_pos, x_neg, inull, usw, bsw, path='',
+                 time=None, iline=1):
         # Initialize as a dictionary:
         super(NullPair, self).__init__()
 
         # Set positions:
         self['x_pos'], self['x_neg'] = x_pos, x_neg
         self['time'] = time
+
+        # Save solar wind conditions:
+        self.u, self.b = usw, bsw
 
         # Get magnetic field line info for each null.
         f_pos = path + f'null_line_pls_o{inull:02d}_{iline:03d}' + \
@@ -213,13 +257,26 @@ class NullPair(dict):
         self['posline'] = read_nulls(f_pos, reorder=True)
         self['negline'] = read_nulls(f_neg, reorder=True)
 
+        self.calc_geopot()
+
     def calc_geopot(self):
         '''
         Calculate potential drop across geoeffective length, save as
         self['geopot']. Units are kV.
         '''
 
-        self['geopot'] = 0
+        # Get start and end point of integration:
+        s1 = np.array([self['posline']['X'][10],
+                       self['posline']['Y'][10],
+                       self['posline']['Z'][10]])
+        s2 = np.array([self['negline']['X'][10],
+                       self['negline']['Y'][10],
+                       self['negline']['Z'][10]])
+        s = RE * (s2 - s1)  # Integration path as a vector in SI units (m)
+
+        # Perform integration assuming constant values across line.
+        # Unit conversion is nT->T; result is in kV.
+        self['geopot'] = 1E-9*dot_product(cross_product(self.u, self.b), s)
 
     def __repr__(self):
         return f'NullPair at [{self["x_pos"]}, {self["x_neg"]}]'
@@ -230,9 +287,21 @@ class NullGroup(list):
     Class for handling magnetic null pairs and all associated information.
 
     To instantiate,
+
+    Paramters
+    =========
+    nullfile : str
+        Path to null file, e.g., "NegNulls_e20150321-040000.dat". These files
+        contain a list of nulls taken at a certain time.
+    rundir : str, defaults to None
+        If given, associates a SWMF run directory with this null set.
+    imffile : str, defaults to None
+        If given, associates an SWMF IMF input file with this null set.
+        Will be used to set solar wind conditions when calculating potential
+        drops across lines.
     '''
 
-    def __init__(self, nullfile, rundir=None):
+    def __init__(self, nullfile, rundir='', imffile=None):
         # Initialize as a dictionary:
         super(NullGroup, self).__init__()
 
@@ -255,10 +324,51 @@ class NullGroup(list):
         # Get datetime from file names.
         self.time = dt.datetime.strptime(nullfile[-19:-4], '%Y%m%d-%H%M%S')
 
+        # Find IMF file, set U and B in solar wind.
+        # If nothing found, set default U, B conditions.
+        if not imffile:  # No imffile set?
+            # Try to auto-find:
+            files = glob(rundir + 'IMF*.dat')
+            if files:
+                imffile = files[0]
+        # Set IMF conditions (use default of no imffile found.)
+        self.get_imf(imffile)
+
         # For each null, create a NullPair object and store.
         self.nnulls = posn['X'].size
         for i in range(self.nnulls):
             x_pos = np.array([posn['X'][i], posn['Y'][i], posn['Z'][i]])
             x_neg = np.array([negn['X'][i], negn['Y'][i], negn['Z'][i]])
-            self.append(NullPair(x_pos, x_neg, self.time,
-                                 path=path, inull=i+1))
+            self.append(NullPair(x_pos, x_neg, i+1, self.u, self.b,
+                                 time=self.time, path=path))
+
+    def get_imf(self, imffile, defaultu=np.array([-400, 0, 0]),
+                defaultb=np.array([0, 0, -10])):
+        '''
+        Open `imffile` and interpolate to self.time. If imffile does not
+        exist, then default to `defaultu`, `defaultb`.
+        '''
+
+        from matplotlib.dates import date2num
+
+        # Can't find file? No filename given? Set defaults and bail.
+        if not imffile or not os.path.exists(imffile):
+            self.imf = None
+            self.u = defaultu
+            self.b = defaultb
+            return
+
+        # Open IMF file.
+        self.imf = ImfInput(imffile)
+        t_imf = date2num(self.imf['time'])
+        t_now = date2num(self.time)
+
+        self.u, self.b = np.array[3], np.array[3]
+        self.u[0] = np.interp(t_now, t_imf, self.imf['ux'])
+        self.u[0] = np.interp(t_now, t_imf, self.imf['uy'])
+        self.u[0] = np.interp(t_now, t_imf, self.imf['uz'])
+        self.b[0] = np.interp(t_now, t_imf, self.imf['bx'])
+        self.b[0] = np.interp(t_now, t_imf, self.imf['by'])
+        self.b[0] = np.interp(t_now, t_imf, self.imf['bz'])
+
+        return
