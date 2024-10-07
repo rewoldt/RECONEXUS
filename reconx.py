@@ -241,9 +241,9 @@ class NullPair(dict):
 
         # Get magnetic field line info for each null.
         f_pos = path + f'null_line_pls_o{inull:02d}_{iline:03d}' + \
-            f'_e{time:%Y%m%d-%H%M%S}.dat'
+            f'_t{time:%Y%m%d-%H%M%S}.dat'
         f_neg = path + f'null_line_neg_o{inull:02d}_{iline:03d}' + \
-            f'_e{time:%Y%m%d-%H%M%S}.dat'
+            f'_t{time:%Y%m%d-%H%M%S}.dat'
         self['linefiles'] = [f_pos, f_neg]
 
         # Are there line files for this null? If not, crash.
@@ -320,6 +320,7 @@ class NullGroup(list):
 
         # Open null files and start mining information.
         posn, negn = read_nulls(f_plus), read_nulls(f_nega)
+        print (posn, negn)
 
         # Get datetime from file names.
         self.time = dt.datetime.strptime(nullfile[-19:-4], '%Y%m%d-%H%M%S')
@@ -328,7 +329,8 @@ class NullGroup(list):
         # If nothing found, set default U, B conditions.
         if not imffile:  # No imffile set?
             # Try to auto-find:
-            files = glob(rundir + 'IMF*.dat')
+            #files = glob(rundir + 'IMF*.dat')
+            files = glob(rundir + 'imf*.dat')
             if files:
                 imffile = files[0]
         # Set IMF conditions (use default of no imffile found.)
@@ -363,12 +365,14 @@ class NullGroup(list):
         t_imf = date2num(self.imf['time'])
         t_now = date2num(self.time)
 
-        self.u, self.b = np.array[3], np.array[3]
+        #self.u, self.b = np.array[3], np.array[3]
+        self.u, self.b = np.zeros(3), np.zeros(3)
         self.u[0] = np.interp(t_now, t_imf, self.imf['ux'])
-        self.u[0] = np.interp(t_now, t_imf, self.imf['uy'])
-        self.u[0] = np.interp(t_now, t_imf, self.imf['uz'])
+        self.u[1] = np.interp(t_now, t_imf, self.imf['uy'])
+        self.u[2] = np.interp(t_now, t_imf, self.imf['uz'])
         self.b[0] = np.interp(t_now, t_imf, self.imf['bx'])
-        self.b[0] = np.interp(t_now, t_imf, self.imf['by'])
-        self.b[0] = np.interp(t_now, t_imf, self.imf['bz'])
+        self.b[1] = np.interp(t_now, t_imf, self.imf['by'])
+        self.b[2] = np.interp(t_now, t_imf, self.imf['bz'])
+        print (self.u, self.b)
 
         return
