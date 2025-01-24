@@ -18,11 +18,8 @@ NullGroup is the main function for manipulating null and trace objects. Given a 
 
 example usage of class: a = NullGroup('NegNulls_e20150321-020000.dat', 'rundir', 'imffile')
 Some functionality:
-check keys: a.keys()
+To check keys: a.keys()
 To call calculated geopotential: a[0]['geopot']
-
-
-class NullGroup(list)
 
     Class for handling magnetic null pairs and all associated information.
 
@@ -41,6 +38,7 @@ class NullGroup(list)
         drops across lines.
 
 #### read_nulls
+
 example usage: `read_nulls(NegNulls_e20150321-020000.dat, reorder=False)` - can read trace and null files
 
     Read a null file and return a dictionary-like data object.
@@ -57,8 +55,10 @@ example usage: `read_nulls(NegNulls_e20150321-020000.dat, reorder=False)` - can 
     -------
     data : dictionary
         Dictionary of nulls and null information.
-    
-example usage of class: NullPair(dict):
+
+#### NullPair
+
+NullPair(dict):
 
     Class for handling a single Null Pair.
 
@@ -78,11 +78,13 @@ example usage of class: NullPair(dict):
     iline : int, defaults to 1
         If there are more than 1 lines associated with this null, this
         kwarg sets which to read.
-    '''
 
 ## First iteration of RECONXEXUS
 The python scripts listed below are a set of original stand-alone code used to derive reconnection potential from geoeffective length (GEL). These scripts have since been iterated on to leverage an object oriented approach (see above).
 ### Scripts and Functionality
-`get_footprints.py` 
-`get_geolength.py`
-`get_iono_drop.py`
+
+`get_footprints.py` reorders trace files and retieves footprint coorinates in the ionosphere.
+
+`get_iono_drop.py` calculates the potential drop from footprint coordinates and retieces cross polar cap potential from ionosphere files.
+
+`get_geolength.py` calculates the RECONEXUS derived potential associated with the potential across the reconnection line. 
