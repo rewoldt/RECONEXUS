@@ -1,9 +1,9 @@
-# RECONEXUS Object Oriented Script
+## RECONEXUS
 
 ## RECONX
 This object oriented method is applied to 3D data files obtained from modified RECONX (Glocer et al, 2015). RECONX was modified to define near-null points, trace them into the solar wind, and output the trace results as readable 3D data files. RECONX is a private git repository and requires approval from original developer for access. 
 
-## Main RECONEXUS Script (reconx.py)
+## Main RECONEXUS Object Oriented Script Description (reconx.py)
 The current iteration of the RECONXUS method is the python script `reconx.py` which reads a null file corresponding to a simulation time as a NullGroup object, identifies all positive and negative null pairs, which are represented as NullPair objects within the group. For each NullPair, the algorithm finds the associated trace files, retrieves the relevant IMF conditions from the SWMF run directory, and calculates the geoeffective potential. Additionally, it retrieves CPCP from the ionosphere file, all stored as a key within the NullPair object for further comparison.
 
 ## Test Files and Functionality
