@@ -11,13 +11,24 @@ import datetime as dt
 import numpy as np
 import matplotlib.pyplot as plt
 
-from spacepy.pybats import ImfInput
-
+from spacepy.pybats import ImfInput, bats, rim
 # Important constants:
 RE = 6371000  # in meters!
 
 
 def dot_product(u, v):
+    '''
+    Calculate and return $u \cdot v$ for inputs u, v.
+
+    Paramters
+    =========
+    u, v : 3-element numpy vectors
+        Vectors to use for cross product.
+
+    Returns
+    =======
+        Dot product result.
+    '''
     return sum([un*vn for un, vn in zip(u, v)])
 
 
@@ -25,7 +36,7 @@ def cross_product(u, v):
     '''
     Calculate and return $u \times v$ for inputs u, v.
 
-    Paramters
+    Parameters
     =========
     u, v : 3-element numpy vectors
         Vectors to use for cross product.
@@ -41,41 +52,6 @@ def cross_product(u, v):
                   u[0]*v[1] - u[1]*v[0]])
 
     return w
-
-
-def read_separator(filename):
-    '''Read a separator file and return a dictionary-like data object.'''
-
-    with open(filename, 'r') as f:
-        # Read one line, parse header:
-        line = f.readline()
-        head = re.findall('\"(.+?)\s\[(.+?)\]\"', line)
-
-        # Extract variable names and units.
-        var, unit = [], []
-        for pair in head:
-            var.append(pair[0])
-            unit.append(pair[1])
-
-        # Skip next line in header:
-        f.readline()
-
-        # Read remainder of lines:
-        lines = f.readlines()
-
-    # Create container for data:
-    data = {}
-    for v in var:
-        data[v] = np.zeros(len(lines))
-
-    # Put data into the container
-    for i, l in enumerate(lines):
-        parts = l.split()
-        for v, p in zip(var, parts):
-            data[v][i] = p
-
-    return data
-
 
 def read_nulls(filename, reorder=False):
     '''
@@ -137,74 +113,6 @@ def read_nulls(filename, reorder=False):
     return data
 
 
-def read_separator_plane(filename):
-    '''Read a separator file from plane method and return a dictionary-like data object.'''
-
-    with open(filename, 'r') as f:
-        # Read one line, parse header:
-        line = f.readline()
-        head = re.findall('\"(.+?)\"', line)
-
-        # Extract variable names and units.
-        var, unit = [], []
-        for pair in head:
-            var.append(pair[0])
-            #unit.append(pair[1])
-
-        # Skip next line in header:
-        f.readline()
-
-        # Read remainder of lines:
-        lines = f.readlines()
-
-    # Create container for data:
-    data = {}
-    for v in var:
-        data[v] = np.zeros(len(lines))
-
-    # Put data into the container
-    for i, l in enumerate(lines):
-        parts = l.split()
-        for v, p in zip(var, parts):
-            data[v][i] = p
-
-    return data
-
-
-def read_sphere(filename):
-    '''Read a separator file and return a dictionary-like data object.'''
-
-    with open(filename, 'r') as f:
-        # Read one line, parse header:
-        line = f.readline()
-        head = re.findall('\"(.+?)\"', line)
-
-        # Extract variable names and units.
-        var, unit = [], []
-        for pair in head:
-            var.append(pair[0])
-        #    unit.append(pair[1])
-
-        # Skip next line in header:
-        f.readline()
-
-        # Read remainder of lines:
-        lines = f.readlines()
-
-    # Create container for data:
-    data = {}
-    for v in var:
-        data[v] = np.zeros(len(lines))
-
-    # Put data into the container
-    for i, l in enumerate(lines):
-        parts = l.split()
-        for v, p in zip(var, parts):
-            data[v][i] = p
-
-    return data
-
-
 class NullPair(dict):
     '''
     Class for handling a single Null Pair.
@@ -213,11 +121,14 @@ class NullPair(dict):
     ----------
     x_pos, x_neg : dmarray
         The XYZ position of the positive and negative nulls, respectively
-    inull : integer
+    inull : int
         The number of the null pair.
     usw, bsw : 3-element numpy vectors
         The solar wind velocity and magnetic field corresponding to the time
         that the null was found. Units should be km/s and nT, respectively.
+    cpcp : int, defaults to None
+        Cross polar cap potential (cpcp) corresponding to point in time when 
+        null found.
     path : str, defaults to empty string
         Path to file location, used for opening line files.
     time : datetime.datetime, defaults to None
@@ -227,7 +138,7 @@ class NullPair(dict):
         kwarg sets which to read.
     '''
 
-    def __init__(self, x_pos, x_neg, inull, usw, bsw, path='',
+    def __init__(self, x_pos, x_neg, inull, usw, bsw, cpcp=None, path='',
                  time=None, iline=1):
         # Initialize as a dictionary:
         super(NullPair, self).__init__()
@@ -235,15 +146,16 @@ class NullPair(dict):
         # Set positions:
         self['x_pos'], self['x_neg'] = x_pos, x_neg
         self['time'] = time
+        self['inull'] = inull
 
         # Save solar wind conditions:
         self.u, self.b = usw, bsw
 
         # Get magnetic field line info for each null.
         f_pos = path + f'null_line_pls_o{inull:02d}_{iline:03d}' + \
-            f'_t{time:%Y%m%d-%H%M%S}.dat'
+            f'_e{time:%Y%m%d-%H%M%S}.dat'
         f_neg = path + f'null_line_neg_o{inull:02d}_{iline:03d}' + \
-            f'_t{time:%Y%m%d-%H%M%S}.dat'
+            f'_e{time:%Y%m%d-%H%M%S}.dat'
         self['linefiles'] = [f_pos, f_neg]
 
         # Are there line files for this null? If not, crash.
@@ -258,6 +170,7 @@ class NullPair(dict):
         self['negline'] = read_nulls(f_neg, reorder=True)
 
         self.calc_geopot()
+        self['cpcp'] = cpcp
 
     def calc_geopot(self):
         '''
@@ -272,7 +185,7 @@ class NullPair(dict):
         s2 = np.array([self['negline']['X'][10],
                        self['negline']['Y'][10],
                        self['negline']['Z'][10]])
-        s = RE * (s2 - s1)  # Integration path as a vector in SI units (m)
+        s = RE * (s2 - s1)  # Integration path as a vector in SI units (m)]
 
         # Perform integration assuming constant values across line.
         # Unit conversion is nT->T; result is in kV.
@@ -320,7 +233,6 @@ class NullGroup(list):
 
         # Open null files and start mining information.
         posn, negn = read_nulls(f_plus), read_nulls(f_nega)
-        print (posn, negn)
 
         # Get datetime from file names.
         self.time = dt.datetime.strptime(nullfile[-19:-4], '%Y%m%d-%H%M%S')
@@ -335,13 +247,23 @@ class NullGroup(list):
                 imffile = files[0]
         # Set IMF conditions (use default of no imffile found.)
         self.get_imf(imffile)
+        
+        files = glob(rundir+f'IE/it{nullfile[-17:-11]}_{nullfile[-10:-4]}_000.*')
+        if files:
+            ionofile = files[0]
+            self.get_cpcp(ionofile)
+        else: self.cpcp = 0
+            
+        #ionofile = glob(rundir+f'IE/it{self.time: %Y%m%d-%H%M%S}_000.idl')[0]
+        # Set cpcp from ionosphere files.
+        #self.get_cpcp(ionofile)
 
         # For each null, create a NullPair object and store.
         self.nnulls = posn['X'].size
         for i in range(self.nnulls):
             x_pos = np.array([posn['X'][i], posn['Y'][i], posn['Z'][i]])
             x_neg = np.array([negn['X'][i], negn['Y'][i], negn['Z'][i]])
-            self.append(NullPair(x_pos, x_neg, i+1, self.u, self.b,
+            self.append(NullPair(x_pos, x_neg, i+1, self.u, self.b, self.cpcp,
                                  time=self.time, path=path))
 
     def get_imf(self, imffile, defaultu=np.array([-400, 0, 0]),
@@ -365,7 +287,6 @@ class NullGroup(list):
         t_imf = date2num(self.imf['time'])
         t_now = date2num(self.time)
 
-        #self.u, self.b = np.array[3], np.array[3]
         self.u, self.b = np.zeros(3), np.zeros(3)
         self.u[0] = np.interp(t_now, t_imf, self.imf['ux'])
         self.u[1] = np.interp(t_now, t_imf, self.imf['uy'])
@@ -373,6 +294,16 @@ class NullGroup(list):
         self.b[0] = np.interp(t_now, t_imf, self.imf['bx'])
         self.b[1] = np.interp(t_now, t_imf, self.imf['by'])
         self.b[2] = np.interp(t_now, t_imf, self.imf['bz'])
-        print (self.u, self.b)
 
+        return
+        
+    def get_cpcp(self, ionofile):
+        '''
+        Open `ionofile` and calculate cpcp associated with null pair.
+        '''
+        # Can't find file? No filename given? Set defaults and bail.
+        
+        if os.path.exists(ionofile):
+            self.iono = rim.Iono(ionofile)
+            self.cpcp = self.iono['n_phi'].max() - self.iono['n_phi'].min()
         return
