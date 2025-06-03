@@ -54,13 +54,33 @@ def extract_time_from_filename(filename):
         return timedelta(hours=hours, minutes=minutes, seconds=seconds)
     return None
 
+def extract_time_from_filename(filename):
+    '''
+    Extracts the time from the filename in the format 'tHHMMSS'.
+    '''
+    #match = re.search(r'_t(\d{8})_n(\d{8})\.out$', filename)
+    match = re.search(r'_t(\d{8})_n(\d{8})\.tree$', filename)
+    #match = re.search(r'_t(\d{8})_n(\d{8})\.info$', filename)
+    if match:
+        time_str = match.group(1)
+        print (time_str)
+        hours = int(time_str[0:4])
+        print (hours)
+        minutes = int(time_str[4:6])
+        print (minutes)
+        seconds = int(time_str[6:8])
+        print (seconds)
+        return timedelta(hours=hours, minutes=minutes, seconds=seconds)
+    return None
+
 def rename_files_in_directory(directory, start_time):
     '''
     Renames all files matching the patterns by updating their time.
     '''
     for filename in os.listdir(directory):
         # Check if the file matches the pattern
-        if re.match(r'(null_line_neg.*_t\d{8}\.dat|null_line_pls.*_t\d{8}\.dat|NegNulls_t\d{8}\.dat|PlusNulls_t\d{8}\.dat)', filename):
+        #if re.match(r'(null_line_neg.*_t\d{8}\.dat|null_line_pls.*_t\d{8}\.dat|NegNulls_t\d{8}\.dat|PlusNulls_t\d{8}\.dat)', filename):
+        if re.match(r'(null_line_neg.*_t\d{8}\.dat|null_line_pls.*_t\d{8}\.dat|NegNulls_t\d{8}\.dat|PlusNulls_t\d{8}\.dat|Separator_t\d{8}\.dat)', filename):
             # Extract the time from the filename
             time_delta = extract_time_from_filename(filename)
             
@@ -77,11 +97,38 @@ def rename_files_in_directory(directory, start_time):
             new_path = os.path.join(directory, new_filename)
             os.rename(old_path, new_path)
             print(f'Renamed {filename} to {new_filename}')
+            
+def rename_files_in_directory(directory, start_time):
+    '''
+    Renames all files matching the patterns by updating their time.
+    '''
+    for filename in os.listdir(directory):
+        # Check if the file matches the pattern
+        #if re.match(r'(null_line_neg.*_t\d{8}\.dat|null_line_pls.*_t\d{8}\.dat|NegNulls_t\d{8}\.dat|PlusNulls_t\d{8}\.dat)', filename):
+        #if re.match(r'(3d__mhd_3_t\d{8}_n\d{8}\.out|y=0_mhd_1_t\d{8}_n\d{8}\.out|z=0_mhd_2_t\d{8}_n\d{8}\.out)', filename):
+        if re.match(r'(3d__mhd_3_t\d{8}_n\d{8}\.tree)', filename):
+            # Extract the time from the filename
+            time_delta = extract_time_from_filename(filename)
+            
+            #if time_delta is not None:
+            # Calculate the new time by adding the delta to the start time
+            new_time = start_time + time_delta
+            new_time_str = new_time.strftime('%Y%m%d-%H%M%S')
+            
+            # Form the new filename
+            new_filename = re.sub(r'_t\d{8}_n\d{8}', f'_e{new_time_str}', filename)
+            
+            # Rename the file
+            old_path = os.path.join(directory, filename)
+            new_path = os.path.join(directory, new_filename)
+            os.rename(old_path, new_path)
+            print(f'Renamed {filename} to {new_filename}')
 
 if __name__ == "__main__":
     # Directory containing the files
-    param_directory = "/Volumes/coe-dwelling/swmf_results/GmPlasSphere/plas_psgmie_smallby"
-    run_directory = "/Volumes/SWMF_runs/reconnection_perfection/RECONX/run"
+    param_directory = "/Volumes/SWMF_runs/reconnection_perfection/rxn-test"
+    run_directory = "/Volumes/SWMF_runs/reconnection_perfection/rxn-test/GM/"
+    #run_directory = "/Volumes/SWMF_runs/reconnection_perfection/RECONX/run_psphere/"
     #run_directory = "/Volumes/coe-dwelling/swmf_results/reconnection_perfection/RECONX/run"
     
     # Path to PARAM.in

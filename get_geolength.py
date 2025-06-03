@@ -288,7 +288,7 @@ def plot_current(mhd_file, null_file_neg, null_file_pls, timestamp):
     print (t)
     mhd.calc_j()
     fig = plt.figure(figsize=[10,10])
-    fig = mhd.add_contour('x', 'y', 'j', target=fig, dolog=True, xlim=[-60, 20], ylim=[-40, 40])
+    fig = mhd.add_contour('x', 'y', 'j', target=fig, nClosed=1, dolog=True, xlim=[-60, 20], ylim=[-40, 40])
     plt.scatter(Xn_null, Yn_null, color='Blue', marker='x', label='Negative null')
     plt.scatter(Xp_null, Yp_null, color='Red', marker='x', label='Positive null')
     plt.title(f'time={t}')
@@ -298,7 +298,7 @@ def plot_current(mhd_file, null_file_neg, null_file_pls, timestamp):
         plt.plot([x_neg, x_pos], [y_neg, y_pos], color='green', linestyle='--', linewidth=1)
 
     plt.tight_layout()
-    plt.savefig('./plots_psphere/test_nulls_'+str(timestamp)+'.png', dpi=300)
+    plt.savefig('./plots_psphere/test_sep_'+str(timestamp)+'.png', dpi=300)
 
 def plot_time_dynamics(results):
     # Sort the timestamps

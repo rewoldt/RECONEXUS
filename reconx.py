@@ -53,6 +53,119 @@ def cross_product(u, v):
 
     return w
 
+def map_from_IB(lat, R=2.5):
+    '''
+    Given a geomagnetic latitude, `lat` (radians) at some distance `R`
+    at the MHD inner boundary, map down to ionospheric altitudes (R~=1)
+    assuming a dipole configuration.
+    '''
+
+    return np.arccos(np.sqrt(np.cos(lat)**2/R))
+
+
+def xyz_to_lonlat(x, domap=True):
+    '''
+    Given XYZ as a 3-element numpy array, convert to lon and lat; return
+    lon and lat in radians.
+
+    If `domap` is True, the latitude will be mapped from its current radius
+    down to R=1 assuming magnetic dipole geometry.
+    '''
+
+    R = np.sqrt(x[0]**2 + x[1]**2 + x[2]**2)
+    xy = np.sqrt(x[0]**2 + x[1]**2)
+
+    lon, lat = np.arctan2(x[1], x[0]), np.arctan2(x[2], xy)
+
+    if R > 1 and domap:
+        lat = map_from_IB(lat, R=R)
+
+    return lon, lat
+
+
+def get_iono_drop(iono, x1, x2):
+    '''
+    Given a `pybats.rim.Iono` object, `iono`, and two points (either in
+    SM XYZ or SM lon/lat), determine the electric potential drop between
+    those points.
+
+    `x1` and `x2` should be either 3-element numpy arrays (for SM cartesian
+    XYZ in units of RE) or 2-element numpy arrays (for SM lon/lat in radians).
+
+    If `plot` is set to True, a figure is created showing the locations of
+    `x1` and `x2` in the northern ionosphere.
+
+    A dictionary of results is returned to users which contains the potential
+    values at x1, x2; the potential drop between them; the total CPCP; and
+    any plot objects if `plot` is set to True.
+    '''
+
+    from scipy.interpolate import RectBivariateSpline as Spline
+
+    # If in cartesian XYZ, convert to SM lat/lon:
+    if x1.shape != 3:
+        lon1, lat1 = xyz_to_lonlat(x1)
+    else:
+        lon1, lat1 = x1[:]
+
+    if x2.shape != 3:
+        lon2, lat2 = xyz_to_lonlat(x2)
+    else:
+        lon2, lat2 = x2[:]
+
+    # Positive longitudes only:
+    lon1 += 2*np.pi*(lon1 < 0)
+    lon2 += 2*np.pi*(lon2 < 0)
+
+    # Lat to colat in degrees:
+    colat1 = 90 - 180/np.pi * lat1
+    colat2 = 90 - 180/np.pi * lat2
+
+    # Create interpolator object:
+    lons, lats = iono['n_psi'][0, :], iono['n_theta'][:, 0]
+    interp = Spline(lats, lons, iono['n_phi'])
+
+    # Get potentials:
+    pot1 = interp(colat1, 180/np.pi*lon1)[0, 0]
+    pot2 = interp(colat2, 180/np.pi*lon2)[0, 0]
+    drop = max(pot1, pot2) - min(pot1, pot2)
+    
+    return drop
+
+def read_separator(filename):
+        '''Read a separator file and return a dictionary-like data object.'''
+
+        with open(filename, 'r') as f:
+            # Read one line, parse header:
+            line = f.readline()
+            head = re.findall('\"(.+?)\s\[(.+?)\]\"', line)
+
+            # Extract variable names and units.
+            var, unit = [], []
+            for pair in head:
+                var.append(pair[0])
+                unit.append(pair[1])
+
+            # Skip next line in header:
+            f.readline()
+
+            # Read remainder of lines:
+            lines = f.readlines()
+
+        # Create container for data:
+        data = {}
+        for v in var:
+            data[v] = np.zeros(len(lines))
+
+        # Put data into the container
+        for i, l in enumerate(lines):
+            parts = l.split()
+            for v, p in zip(var, parts):
+                data[v][i] = p
+
+        return data
+
+
 def read_nulls(filename, reorder=False):
     '''
     Read a null file and return a dictionary-like data object.
@@ -129,6 +242,9 @@ class NullPair(dict):
     cpcp : int, defaults to None
         Cross polar cap potential (cpcp) corresponding to point in time when 
         null found.
+    potdrop : int, defaults to None
+        Potential drop between fotpoints in the ionosphere corresponding to 
+        point in time when null found.
     path : str, defaults to empty string
         Path to file location, used for opening line files.
     time : datetime.datetime, defaults to None
@@ -138,7 +254,7 @@ class NullPair(dict):
         kwarg sets which to read.
     '''
 
-    def __init__(self, x_pos, x_neg, inull, usw, bsw, cpcp=None, path='',
+    def __init__(self, x_pos, x_neg, inull, usw, bsw, ionofile='', path='',
                  time=None, iline=1):
         # Initialize as a dictionary:
         super(NullPair, self).__init__()
@@ -152,9 +268,9 @@ class NullPair(dict):
         self.u, self.b = usw, bsw
 
         # Get magnetic field line info for each null.
-        f_pos = path + f'null_line_pls_o{inull:02d}_{iline:03d}' + \
+        f_pos = path + f'null_line_pls_n{inull:02d}_{iline:03d}' + \
             f'_e{time:%Y%m%d-%H%M%S}.dat'
-        f_neg = path + f'null_line_neg_o{inull:02d}_{iline:03d}' + \
+        f_neg = path + f'null_line_neg_n{inull:02d}_{iline:03d}' + \
             f'_e{time:%Y%m%d-%H%M%S}.dat'
         self['linefiles'] = [f_pos, f_neg]
 
@@ -170,7 +286,9 @@ class NullPair(dict):
         self['negline'] = read_nulls(f_neg, reorder=True)
 
         self.calc_geopot()
-        self['cpcp'] = cpcp
+        self.get_cpcp(ionofile)
+        self.calc_potdrop(ionofile)
+        
 
     def calc_geopot(self):
         '''
@@ -190,6 +308,38 @@ class NullPair(dict):
         # Perform integration assuming constant values across line.
         # Unit conversion is nT->T; result is in kV.
         self['geopot'] = 1E-9*dot_product(cross_product(self.u, self.b), s)
+        
+            
+    def get_cpcp(self, ionofile):
+        '''
+        Open `ionofile` and calculate cpcp associated with null pair.
+        '''
+        # Can't find file? No filename given? Set defaults and bail.
+        
+        if os.path.exists(ionofile):
+            self.iono = rim.Iono(ionofile)
+            self['cpcp'] = self.iono['n_phi'].max() - self.iono['n_phi'].min()
+        else: self['cpcp'] = 0
+        return
+
+    def calc_potdrop(self, ionofile):
+        '''
+        Calculate potential drop across footpoints in the ionosphere,
+        save as self['potdrop']. Units are kV.
+
+        '''
+        # Get start and end point of integration:
+        x1 = np.array([self['posline']['X'][-1],
+                       self['posline']['Y'][-1],
+                       self['posline']['Z'][-1]])
+        x2 = np.array([self['negline']['X'][-1],
+                       self['negline']['Y'][-1],
+                       self['negline']['Z'][-1]])
+        if os.path.exists(ionofile):
+            self.iono = rim.Iono(ionofile)
+            self['potdrop'] = get_iono_drop(self.iono, x1, x2)
+        else: self['potdrop'] = 0
+        return
 
     def __repr__(self):
         return f'NullPair at [{self["x_pos"]}, {self["x_neg"]}]'
@@ -251,20 +401,19 @@ class NullGroup(list):
         files = glob(rundir+f'IE/it{nullfile[-17:-11]}_{nullfile[-10:-4]}_000.*')
         if files:
             ionofile = files[0]
-            self.get_cpcp(ionofile)
-        else: self.cpcp = 0
+        else: ionofile=''
             
         #ionofile = glob(rundir+f'IE/it{self.time: %Y%m%d-%H%M%S}_000.idl')[0]
         # Set cpcp from ionosphere files.
         #self.get_cpcp(ionofile)
 
         # For each null, create a NullPair object and store.
-        self.nnulls = posn['X'].size
+        self.nnulls = min(posn['X'].size, negn['X'].size)
+        #self.nnulls = posn['X'].size
         for i in range(self.nnulls):
             x_pos = np.array([posn['X'][i], posn['Y'][i], posn['Z'][i]])
             x_neg = np.array([negn['X'][i], negn['Y'][i], negn['Z'][i]])
-            self.append(NullPair(x_pos, x_neg, i+1, self.u, self.b, self.cpcp,
-                                 time=self.time, path=path))
+            self.append(NullPair(x_pos, x_neg, i+1, self.u, self.b, ionofile=ionofile, time=self.time, path=path))
 
     def get_imf(self, imffile, defaultu=np.array([-400, 0, 0]),
                 defaultb=np.array([0, 0, -10])):
@@ -295,15 +444,4 @@ class NullGroup(list):
         self.b[1] = np.interp(t_now, t_imf, self.imf['by'])
         self.b[2] = np.interp(t_now, t_imf, self.imf['bz'])
 
-        return
-        
-    def get_cpcp(self, ionofile):
-        '''
-        Open `ionofile` and calculate cpcp associated with null pair.
-        '''
-        # Can't find file? No filename given? Set defaults and bail.
-        
-        if os.path.exists(ionofile):
-            self.iono = rim.Iono(ionofile)
-            self.cpcp = self.iono['n_phi'].max() - self.iono['n_phi'].min()
         return
