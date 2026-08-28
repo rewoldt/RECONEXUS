@@ -129,7 +129,7 @@ def get_iono_drop(iono, x1, x2):
     pot1 = interp(colat1, 180/np.pi*lon1)[0, 0]
     pot2 = interp(colat2, 180/np.pi*lon2)[0, 0]
     drop = max(pot1, pot2) - min(pot1, pot2)
-    
+
     return drop
 
 def read_separator(filename):
@@ -240,10 +240,10 @@ class NullPair(dict):
         The solar wind velocity and magnetic field corresponding to the time
         that the null was found. Units should be km/s and nT, respectively.
     cpcp : int, defaults to None
-        Cross polar cap potential (cpcp) corresponding to point in time when 
+        Cross polar cap potential (cpcp) corresponding to point in time when
         null found.
     potdrop : int, defaults to None
-        Potential drop between fotpoints in the ionosphere corresponding to 
+        Potential drop between fotpoints in the ionosphere corresponding to
         point in time when null found.
     path : str, defaults to empty string
         Path to file location, used for opening line files.
@@ -288,7 +288,7 @@ class NullPair(dict):
         self.calc_geopot()
         self.get_cpcp(ionofile)
         self.calc_potdrop(ionofile)
-        
+
 
     def calc_geopot(self):
         '''
@@ -308,14 +308,14 @@ class NullPair(dict):
         # Perform integration assuming constant values across line.
         # Unit conversion is nT->T; result is in kV.
         self['geopot'] = 1E-9*dot_product(cross_product(self.u, self.b), s)
-        
-            
+
+
     def get_cpcp(self, ionofile):
         '''
         Open `ionofile` and calculate cpcp associated with null pair.
         '''
         # Can't find file? No filename given? Set defaults and bail.
-        
+
         if os.path.exists(ionofile):
             self.iono = rim.Iono(ionofile)
             self['cpcp'] = self.iono['n_phi'].max() - self.iono['n_phi'].min()
@@ -397,12 +397,12 @@ class NullGroup(list):
                 imffile = files[0]
         # Set IMF conditions (use default of no imffile found.)
         self.get_imf(imffile)
-        
+
         files = glob(rundir+f'IE/it{nullfile[-17:-11]}_{nullfile[-10:-4]}_000.*')
         if files:
             ionofile = files[0]
         else: ionofile=''
-            
+
         #ionofile = glob(rundir+f'IE/it{self.time: %Y%m%d-%H%M%S}_000.idl')[0]
         # Set cpcp from ionosphere files.
         #self.get_cpcp(ionofile)
@@ -420,19 +420,28 @@ class NullGroup(list):
         '''
         Open `imffile` and interpolate to self.time. If imffile does not
         exist, then default to `defaultu`, `defaultb`.
+
+        If `imffile` is a spacepy.pybats.ImfInput object, use that.
+        If `imffile` is a string, open the file as a ImfInput object.
         '''
 
         from matplotlib.dates import date2num
 
-        # Can't find file? No filename given? Set defaults and bail.
-        if not imffile or not os.path.exists(imffile):
-            self.imf = None
-            self.u = defaultu
-            self.b = defaultb
-            return
+        if type(imffile) is str:
+            # Can't find file? No filename given? Set defaults and bail.
+            if not imffile or not os.path.exists(imffile):
+                self.imf = None
+                self.u = defaultu
+                self.b = defaultb
+                return
+            # Open the file if found:
+            self.imf = ImfInput(imffile)
 
-        # Open IMF file.
-        self.imf = ImfInput(imffile)
+        elif type(imffile) is ImfInput:
+            self.imf = imffile
+        else:
+            raise ValueError('Unrecognized type for imffile')
+
         t_imf = date2num(self.imf['time'])
         t_now = date2num(self.time)
 
