@@ -308,7 +308,10 @@ class NullPair(dict):
         # Perform integration assuming constant values across line.
         # Unit conversion is nT->T; result is in kV.
         self['geopot'] = 1E-9*dot_product(cross_product(self.u, self.b), s)
-        self['gel'] = s
+
+        # Calculate GEL absolute value:
+        dist = s2 - s1
+        self['gel'] = np.sqrt(dist[0]**2 + dist[1]**2 + dist[2]**2)
 
 
     def get_cpcp(self, ionofile):
