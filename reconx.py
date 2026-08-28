@@ -442,9 +442,15 @@ class NullGroup(list):
         else:
             raise ValueError('Unrecognized type for imffile')
 
+        # Some IMF calculations:
+        self.imf.calc_b()
+        self.imf.calc_u()
+        self.imf.calc_alf()
+
         t_imf = date2num(self.imf['time'])
         t_now = date2num(self.time)
 
+        # Stash B and U by component:
         self.u, self.b = np.zeros(3), np.zeros(3)
         self.u[0] = np.interp(t_now, t_imf, self.imf['ux'])
         self.u[1] = np.interp(t_now, t_imf, self.imf['uy'])
@@ -452,5 +458,13 @@ class NullGroup(list):
         self.b[0] = np.interp(t_now, t_imf, self.imf['bx'])
         self.b[1] = np.interp(t_now, t_imf, self.imf['by'])
         self.b[2] = np.interp(t_now, t_imf, self.imf['bz'])
+
+        # Stash total field and plasma parameters:
+        self.btot = np.interp(t_now, t_imf, self.imf['b'])
+        self.utot = np.interp(t_now, t_imf, self.imf['u'])
+        self.ped = np.interp(t_now, t_imf, self.imf['cond'])
+        self.alf = np.interp(t_now, t_imf, self.imf['vAlf'])
+        self.n = np.interp(t_now, t_imf, self.imf['n'])
+
 
         return
