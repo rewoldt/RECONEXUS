@@ -23,6 +23,7 @@ Underlying Assumptions:
 '''
 
 import os
+import datetime as dt
 from glob import glob
 import pickle
 
@@ -202,3 +203,49 @@ def plot_summary(runname):
 
     fig.tight_layout()
 
+
+def compare_gel_2times(runname, t1=dt.datetime(1998, 5, 4, 8, 0, 0),
+                       t2=dt.datetime(1998, 5, 5, 11, 0, 0)):
+    '''
+    Examine GEL dynamics between two times.
+
+    t1 and t2 should be datetimes. :P
+    '''
+
+    # Open the files we want:
+    # Load a pickle with reconnexus stuff:
+    with open(f'reconexus_results_{runname}.pkl', 'rb') as f:
+        data = pickle.load(f)
+
+    # Shortcut vars:
+    dirrxn = runs[runname]['directory_test']
+
+    # Open our RxN lines:
+    strtime = f"{t1:%Y%m%d-%H%M%S}"
+    lp1 = reconx.read_nulls(dirrxn + f"null_line_pls_n01_001_e{strtime}.dat")
+    ln1 = reconx.read_nulls(dirrxn + f"null_line_neg_n01_001_e{strtime}.dat")
+
+    strtime = f"{t2:%Y%m%d-%H%M%S}"
+    lp2 = reconx.read_nulls(dirrxn + f"null_line_pls_n01_001_e{strtime}.dat")
+    ln2 = reconx.read_nulls(dirrxn + f"null_line_neg_n01_001_e{strtime}.dat")
+
+
+    fig = plt.figure(figsize=[16, 12])
+    a1, a2 = fig.add_subplot(2, 2, 1), fig.add_subplot(2, 2, 2, projection='3d')
+    a3 = fig.add_subplot(2, 1, 2)
+
+    a1.plot(lp1['X'], lp1['Y'], 'ro', ln1['X'], ln1['Y'], 'ro', label='Time 1')
+    a1.plot(lp2['X'], lp2['Y'], 'bo', ln2['X'], ln2['Y'], 'bo', label='Time 2')
+    a1.legend(loc='best')
+
+    a2.plot(lp1['X'], lp1['Y'], lp1['Z'], '.r')
+    a2.plot(ln1['X'], ln1['Y'], ln1['Z'], '.r', label='Time 1')
+    a2.plot(lp2['X'], lp2['Y'], lp2['Z'], '.b')
+    a2.plot(ln2['X'], ln2['Y'], ln2['Z'], '.b', label='Time 2')
+
+    a3.plot(data['runtime'], data['geopot'], 'o-', label=r'Reconexus $\Phi$')
+    a3.plot(data['runtime'], data['cpcp'], 'o-', label='CPCP')
+    a3.plot(data['runtime'], data['krpot'], 'o-', label='K&R Pot')
+    a3.plot(data['runtime'], data['ifpot'], 'o-', label='Footpoint Pot')
+    a3.legend(loc='best')
+    a3.set_ylabel(r'$\Phi$ ($kV$)')
