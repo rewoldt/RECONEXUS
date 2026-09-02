@@ -30,7 +30,7 @@ import pickle
 import numpy as np
 import matplotlib.pyplot as plt
 import spacepy.plot as splot
-from spacepy.pybats import ImfInput
+from spacepy.pybats import ImfInput, bats
 
 import reconx
 
@@ -60,6 +60,12 @@ runs['rho'] = {
     'rundir_test': prefix + "rxn_DeltaDensity/",
     'imffile': prefix + "rxn_DeltaDensity/imf_mf_DeltaDensity_by.dat"
 }
+
+runs['bz_testsep'] = {
+    'directory_test': "/home/rewoldt/RECONX/run/",
+    'rundir_test': prefix + "rxn_deltaB_long/",
+    'imffile': prefix + "rxn_deltaB_long/imf_mf_DeltaBz_by.dat"
+                    }
 
 # NUMERICAL CONSTANTS:
 ccm2SI = 1.6726E-27*1.0E6  # Conversion from #/cm-3 to kg/m-3
@@ -225,33 +231,186 @@ def compare_gel_2times(runname, t1=dt.datetime(1998, 5, 4, 8, 0, 0),
 
     # Shortcut vars:
     dirrxn = runs[runname]['directory_test']
+    dirrun = runs[runname]['rundir_test']
 
-    # Open our RxN lines:
+    # Open our RxN lines, separators, and MHD files:
     strtime = f"{t1:%Y%m%d-%H%M%S}"
     lp1 = reconx.read_nulls(dirrxn + f"null_line_pls_n01_001_e{strtime}.dat")
     ln1 = reconx.read_nulls(dirrxn + f"null_line_neg_n01_001_e{strtime}.dat")
+    sep1 = reconx.read_separator(dirrxn + f"Separator_e{strtime}.dat")
+    mhd1 = bats.Bats2d(dirrun + f"GM/z=0_mhd_2_e{strtime}-000.out")
+    mhd1.calc_j()
 
     strtime = f"{t2:%Y%m%d-%H%M%S}"
     lp2 = reconx.read_nulls(dirrxn + f"null_line_pls_n01_001_e{strtime}.dat")
     ln2 = reconx.read_nulls(dirrxn + f"null_line_neg_n01_001_e{strtime}.dat")
+    sep2 = reconx.read_separator(dirrxn + f"Separator_e{strtime}.dat")
+    mhd2 = bats.Bats2d(dirrun + f"GM/z=0_mhd_2_e{strtime}-000.out")
+
+    kwargs = {'ylim': [-45, 15], 'xlim': [-25, 25], 'cmap': 'viridis', 'nlev': 51,
+           'dolog': True, 'extend': 'max', 'add_cbar': True}
 
 
     fig = plt.figure(figsize=[16, 12])
     a1, a2 = fig.add_subplot(2, 2, 1), fig.add_subplot(2, 2, 2, projection='3d')
     a3 = fig.add_subplot(2, 1, 2)
-
-    a1.plot(lp1['X'], lp1['Y'], 'ro', ln1['X'], ln1['Y'], 'ro', label='Time 1')
-    a1.plot(lp2['X'], lp2['Y'], 'bo', ln2['X'], ln2['Y'], 'bo', label='Time 2')
+    mhd1.add_contour('y', 'x', 'j', target=a1, loc=121, **kwargs)
+    a1.plot(lp1['Y'], lp1['X'], 'ro', ln1['Y'], ln1['X'], 'ro', label=f'Time 1 = {t1:%d-%H%M}')
+    a1.plot(lp2['Y'], lp2['X'], 'bo', ln2['Y'], ln2['X'], 'bo', label=f'Time 2 = {t2:%d-%H%M}')
+    a1.plot(sep1['Y'], sep1['X'], 'mx', label='Separator 1')
+    a1.plot(sep2['Y'], sep2['X'], 'gx', label='Separator 2')
     a1.legend(loc='best')
 
     a2.plot(lp1['X'], lp1['Y'], lp1['Z'], '.r')
     a2.plot(ln1['X'], ln1['Y'], ln1['Z'], '.r', label='Time 1')
     a2.plot(lp2['X'], lp2['Y'], lp2['Z'], '.b')
     a2.plot(ln2['X'], ln2['Y'], ln2['Z'], '.b', label='Time 2')
+    a2.plot(sep1['X'], sep1['Y'], sep1['Z'], 'mx', label='Separator 1')
+    a2.plot(sep2['X'], sep2['Y'], sep2['Z'], 'gx', label='Separator 2')
 
-    a3.plot(data['runtime'], data['geopot'], 'o-', label=r'Reconexus $\Phi$')
+    a3.plot(data['runtime'], data['geopot'], 'o-', label=r'$\Phi_{RECONEXUS}$')
     a3.plot(data['runtime'], data['cpcp'], 'o-', label='CPCP')
-    a3.plot(data['runtime'], data['krpot'], 'o-', label='K&R Pot')
-    a3.plot(data['runtime'], data['ifpot'], 'o-', label='Footpoint Pot')
+    a3.plot(data['runtime'], data['krpot'], 'o-', label=r'$\Phi_{K&R}$')
+    a3.plot(data['runtime'], data['ifpot'], 'o-', label=r'$\Phi_{IFP}$')
     a3.legend(loc='best')
     a3.set_ylabel(r'$\Phi$ ($kV$)')
+
+def compare_gel_2times(runname, t1=dt.datetime(1998, 5, 4, 0, 0, 0),
+                       t2=dt.datetime(1998, 5, 5, 11, 0, 0)):
+    '''
+    Examine GEL dynamics between two times.
+
+    t1 and t2 should be datetimes. :P
+    '''
+
+    # Open the files we want:
+    # Load a pickle with reconnexus stuff:
+    with open(f'reconexus_results_{runname}.pkl', 'rb') as f:
+        data = pickle.load(f)
+
+    # Shortcut vars:
+    dirrxn = runs[runname]['directory_test']
+    dirrun = runs[runname]['rundir_test']
+
+    # Open our RxN lines, separators, and MHD files:
+    strtime = f"{t1:%Y%m%d-%H%M%S}"
+    lp1 = reconx.read_nulls(dirrxn + f"null_line_pls_n01_001_e{strtime}.dat")
+    ln1 = reconx.read_nulls(dirrxn + f"null_line_neg_n01_001_e{strtime}.dat")
+    sep1 = reconx.read_separator(dirrxn + f"Separator_e{strtime}.dat")
+    mhd1 = bats.Bats2d(dirrun + f"GM/z=0_mhd_2_e{strtime}-000.out")
+    mhd1.calc_j()
+
+    strtime = f"{t2:%Y%m%d-%H%M%S}"
+    lp2 = reconx.read_nulls(dirrxn + f"null_line_pls_n01_001_e{strtime}.dat")
+    ln2 = reconx.read_nulls(dirrxn + f"null_line_neg_n01_001_e{strtime}.dat")
+    sep2 = reconx.read_separator(dirrxn + f"Separator_e{strtime}.dat")
+    mhd2 = bats.Bats2d(dirrun + f"GM/z=0_mhd_2_e{strtime}-000.out")
+
+    kwargs = {'ylim': [-45, 15], 'xlim': [-25, 25], 'cmap': 'viridis', 'nlev': 51,
+           'dolog': True, 'extend': 'max', 'add_cbar': True}
+
+
+    fig = plt.figure(figsize=[16, 12])
+    a1, a2 = fig.add_subplot(2, 2, 1), fig.add_subplot(2, 2, 2, projection='3d')
+    a3 = fig.add_subplot(2, 1, 2)
+    mhd1.add_contour('y', 'x', 'j', target=a1, loc=121, **kwargs)
+    a1.plot(lp1['Y'], lp1['X'], '.r', ln1['Y'], ln1['X'], 'ro', label=f'Time 1 = {t1:%d-%H%M}')
+    a1.plot(lp2['Y'], lp2['X'], '.b', ln2['Y'], ln2['X'], 'bo', label=f'Time 2 = {t2:%d-%H%M}')
+    a1.plot(sep1['Y'], sep1['X'], 'mx', label='Separator 1')
+    a1.plot(sep2['Y'], sep2['X'], 'gx', label='Separator 2')
+    a1.legend(loc='best')
+
+    a2.plot(lp1['X'], lp1['Y'], lp1['Z'], '.r')
+    a2.plot(ln1['X'], ln1['Y'], ln1['Z'], '.r', label='Time 1')
+    a2.plot(lp2['X'], lp2['Y'], lp2['Z'], '.b')
+    a2.plot(ln2['X'], ln2['Y'], ln2['Z'], '.b', label='Time 2')
+    a2.plot(sep1['X'], sep1['Y'], sep1['Z'], 'mx', label='Separator 1')
+    a2.plot(sep2['X'], sep2['Y'], sep2['Z'], 'gx', label='Separator 2')
+
+    a3.plot(data['runtime'], data['geopot'], 'o-', label=r'$\Phi_{RECONEXUS}$')
+    a3.plot(data['runtime'], data['cpcp'], 'o-', label='CPCP')
+    a3.plot(data['runtime'], data['krpot'], 'o-', label=r'$\Phi_{K&R}$')
+    a3.plot(data['runtime'], data['ifpot'], 'o-', label=r'$\Phi_{IFP}$')
+    a3.legend(loc='best')
+
+def compare_2runs_2times(runname1, runname2, t1=dt.datetime(1998, 5, 4, 8, 0, 0),
+                       t2=dt.datetime(1998, 5, 5, 11, 0, 0)):
+    '''
+    Examine the position of separators for two runs at two times.
+
+    t1 and t2 should be datetimes. :P
+    '''
+    # Open the files we want:
+    # Load a pickle with reconnexus stuff:
+    with open(f'reconexus_results_{runname1}.pkl', 'rb') as f:
+        data1 = pickle.load(f)
+
+    with open(f'reconexus_results_{runname2}.pkl', 'rb') as f:
+        data2 = pickle.load(f)
+
+    # Shortcut vars:
+    dirrxn1, dirrun1 = runs[runname1]['directory_test'], runs[runname1]['rundir_test']
+    dirrxn2, dirrun2 = runs[runname2]['directory_test'], runs[runname2]['rundir_test']
+
+    # Open our RxN lines, separators, and MHD files:
+    strtime = f"{t1:%Y%m%d-%H%M%S}"
+    lpt1r1 = reconx.read_nulls(dirrxn1 + f"null_line_pls_n01_001_e{strtime}.dat")
+    lnt1r1 = reconx.read_nulls(dirrxn1 + f"null_line_neg_n01_001_e{strtime}.dat")
+    sept1r1 = reconx.read_separator(dirrxn1 + f"Separator_e{strtime}.dat")
+    mhdt1r1 = bats.Bats2d(dirrun1 + f"GM/z=0_mhd_2_e{strtime}-000.out")
+    mhdt1r1.calc_j()
+
+    lpt1r2 = reconx.read_nulls(dirrxn2 + f"null_line_pls_n01_001_e{strtime}.dat")
+    lnt1r2 = reconx.read_nulls(dirrxn2 + f"null_line_neg_n01_001_e{strtime}.dat")
+    sept1r2 = reconx.read_separator(dirrxn2 + f"Separator_e{strtime}.dat")
+    #mhdt1r2 = bats.Bats2d(dirrun1 + f"GM/z=0_mhd_2_e{strtime}-000.out")
+    #mhdt1r2.calc_j()
+
+    strtime = f"{t2:%Y%m%d-%H%M%S}"
+    lpt2r1 = reconx.read_nulls(dirrxn1 + f"null_line_pls_n01_001_e{strtime}.dat")
+    lnt2r1 = reconx.read_nulls(dirrxn1 + f"null_line_neg_n01_001_e{strtime}.dat")
+    sept2r1 = reconx.read_separator(dirrxn1 + f"Separator_e{strtime}.dat")
+    mhdt2r1 = bats.Bats2d(dirrun1 + f"GM/z=0_mhd_2_e{strtime}-000.out")
+    mhdt2r1.calc_j()
+
+    lpt2r2 = reconx.read_nulls(dirrxn2 + f"null_line_pls_n01_001_e{strtime}.dat")
+    lnt2r2 = reconx.read_nulls(dirrxn2 + f"null_line_neg_n01_001_e{strtime}.dat")
+    sept2r2 = reconx.read_separator(dirrxn2 + f"Separator_e{strtime}.dat")
+    #mhdt2r2 = bats.Bats2d(dirrun2 + f"GM/z=0_mhd_2_e{strtime}-000.out")
+    #mhdt2r2.calc_j()
+
+    kwargs = {'ylim': [-45, 15], 'xlim': [-25, 25], 'cmap': 'viridis', 'nlev': 51,
+        'dolog': True, 'extend': 'max', 'add_cbar': True}
+
+    fig = plt.figure(figsize=[16, 16])
+
+    a1, a2 = fig.add_subplot(1, 2, 1), fig.add_subplot(1, 2, 2, projection='3d')
+    mhdt1r1.add_contour('y', 'x', 'j', target=a1, loc=121, **kwargs)
+    #mhdt1r2.add_contour('y', 'x', 'j', target=a1, loc=121, **kwargs, alpha=0.5)
+    a1.plot(lpt1r1['Y'], lpt1r1['X'], '^r', label=f'{runname1}, {t1:%d-%H%M}')
+    a1.plot(lnt1r1['Y'], lnt1r1['X'], '^r') 
+    a1.plot(lpt2r1['Y'], lpt2r1['X'], '^b', label=f'{runname1}, {t2:%d-%H%M}')
+    a1.plot(lnt2r1['Y'], lnt2r1['X'], '^b')
+    a1.plot(sept1r1['Y'], sept1r1['X'], '^m',  label=f'{runname1}, Separator {t1:%d-%H%M}')
+    a1.plot(sept2r1['Y'], sept2r1['X'], '^y',  label=f'{runname1}, Separator {t2:%d-%H%M}')
+    a1.plot(lpt1r2['Y'], lpt1r2['X'], '.r', label=f'{runname2}, {t1:%d-%H%M}')
+    a1.plot(lnt1r2['Y'], lnt1r2['X'], '.r')
+    a1.plot(lpt2r2['Y'], lpt2r2['X'], '.b', label=f'{runname2}, {t2:%d-%H%M}')
+    a1.plot(lnt2r2['Y'], lnt2r2['X'], '.b')
+    a1.plot(sept1r2['Y'], sept1r2['X'], '.m',  label=f'{runname2}, Separator {t1:%d-%H%M}')
+    a1.plot(sept2r2['Y'], sept2r2['X'], '.y',  label=f'{runname2}, Separator {t2:%d-%H%M}')
+    a1.legend(loc='best')
+
+    a2.plot(lpt1r1['X'], lpt1r1['Y'], lpt1r1['Z'], '.r')
+    a2.plot(lnt1r1['X'], lnt1r1['Y'], lnt1r1['Z'], '.r', label=f'{runname1} {t1:%d-%H%M}')
+    a2.plot(lpt2r1['X'], lpt2r1['Y'], lpt2r1['Z'], '.b')
+    a2.plot(lnt2r1['X'], lnt2r1['Y'], lnt2r1['Z'], '.b', label=f'{runname1} {t2:%d-%H%M}')
+    a2.plot(sept1r1['X'], sept1r1['Y'], sept1r1['Z'], '.m', label=f'{runname1}, Separator {t1:%d-%H%M}')
+    a2.plot(sept2r1['X'], sept2r1['Y'], sept2r1['Z'], '.y', label=f'{runname1}, Separator {t2:%d-%H%M}')
+    a2.plot(lpt1r2['X'], lpt1r2['Y'], lpt1r2['Z'], '^r')
+    a2.plot(lnt1r2['X'], lnt1r2['Y'], lnt1r2['Z'], '^r', label=f'{runname2} {t1:%d-%H%M}')
+    a2.plot(lpt2r2['X'], lpt2r2['Y'], lpt2r2['Z'], '^b')
+    a2.plot(lnt2r2['X'], lnt2r2['Y'], lnt2r2['Z'], '^b', label=f'{runname2} {t2:%d-%H%M}')
+    a2.plot(sept1r2['X'], sept1r2['Y'], sept1r2['Z'], '^m', label=f'{runname2}, Separator {t1:%d-%H%M}')
+    a2.plot(sept2r2['X'], sept2r2['Y'], sept2r2['Z'], '^y', label=f'{runname2}, Separator {t2:%d-%H%M}')
+
