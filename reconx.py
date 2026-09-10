@@ -450,6 +450,7 @@ class NullGroup(list):
         self.imf.calc_b()
         self.imf.calc_u()
         self.imf.calc_alf()
+        self.imf.calc_pram()
 
         t_imf = date2num(self.imf['time'])
         t_now = date2num(self.time)
@@ -469,6 +470,7 @@ class NullGroup(list):
         self.ped = np.interp(t_now, t_imf, self.imf['cond'])
         self.alf = np.interp(t_now, t_imf, self.imf['vAlf'])
         self.n = np.interp(t_now, t_imf, self.imf['n'])
+        self.pram = np.interp(t_now, t_imf, self.imf['pram'])
 
 
         return
