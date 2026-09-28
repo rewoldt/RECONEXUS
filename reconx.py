@@ -296,13 +296,28 @@ class NullPair(dict):
         self['geopot']. Units are kV.
         '''
 
-        # Get start and end point of integration:
-        s1 = np.array([self['posline']['X'][10],
-                       self['posline']['Y'][10],
-                       self['posline']['Z'][10]])
-        s2 = np.array([self['negline']['X'][10],
-                       self['negline']['Y'][10],
-                       self['negline']['Z'][10]])
+        # Get the first 10 points from each line
+        pos = np.column_stack((
+            self['posline']['X'][:10],
+            self['posline']['Y'][:10],
+            self['posline']['Z'][:10]))
+
+        neg = np.column_stack((
+            self['negline']['X'][:10],
+            self['negline']['Y'][:10],
+            self['negline']['Z'][:10]))
+
+        # Find all pairwise distances between posline and negline points
+        diff = neg[:, np.newaxis, :] - pos[np.newaxis, :, :]
+        dist = np.linalg.norm(diff, axis=2)
+
+        # Find the shortest pair
+        i_neg, i_pos = np.unravel_index(np.argmin(dist), dist.shape)
+
+        # Integration endpoints
+        s1 = pos[i_pos]
+        s2 = neg[i_neg]
+
         s = RE * (s2 - s1)  # Integration path as a vector in SI units (m)]
 
         # Perform integration assuming constant values across line.

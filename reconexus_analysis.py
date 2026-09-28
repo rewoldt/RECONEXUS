@@ -50,21 +50,33 @@ runs['vsw'] = {
 }
 
 runs['bz'] = {
-    'rxn_dir': prefix + "reconx_data/run_deltaBz_long_surface/",
+    'rxn_dir': prefix + "reconx_data/run_DeltaBz_long_null/",
     'swmf_dir': prefix + "rxn_DeltaBz_long/",
     'imffile': prefix + "rxn_DeltaBz_long/imf_mf_DeltaBz_by.dat"
 }
     
 runs['n'] = {
-    'rxn_dir': prefix + "reconx_data/run_deltaDensity_surface/",
-    'swmf_dir': prefix + "rxn_DeltaDensity/",
-    'imffile': prefix + "rxn_DeltaDensity/imf_mf_DeltaDensity_by.dat"
+    'rxn_dir': prefix + "reconx_data/run_DeltaN_long_null/",
+    'swmf_dir': prefix + "rxn_DeltaN_long/",
+    'imffile': prefix + "rxn_DeltaN_long/imf_mf_DeltaN_by.dat"
 }
 
-runs['bz_testsep'] = {
-    'rxn_dir': "/home/rewoldt/RECONX/run/",
-    'swmf_dir': prefix + "rxn_DeltaBz_long/",
-    'imffile': prefix + "rxn_DeltaBz_long/imf_mf_DeltaBz_by.dat"
+runs['cond'] = {
+    'rxn_dir': prefix + "reconx_data/run_cond_null/",
+    'swmf_dir': prefix + "rxn_conductance/",
+    'imffile': prefix + "rxn_conductance/imf_mf_cond_by.dat"
+                    }
+
+runs['bz_vsw750'] = {
+    'rxn_dir': prefix + "../RECONX/run_DeltaBz_Vsw750_xlim20_null/",
+    'swmf_dir': prefix + "rxn_DeltaBz_Vsw750/",
+    'imffile': prefix + "rxn_DeltaBz_Vsw750/imf_DeltaBz_Vsw750_by.dat"
+                    }
+
+runs['bz_20_single'] = {
+    'rxn_dir': prefix + "../RECONX/run_DeltaBz20_single_null/",
+    'swmf_dir': prefix + "rxn_DeltaBz20_single/",
+    'imffile': prefix + "rxn_DeltaBz20_single/imf_mf_bzturn_by.dat"
                     }
 
 # NUMERICAL CONSTANTS:
@@ -191,12 +203,12 @@ def potential_plots(runname):
                             for t in imf['time']])
     interp = np.interp(data['runtime'], hours_imf, imf['ux'])
 
-    slope, intercept, r_value, = linregress(data['cpcp'], data['krpot'])
+    slope, intercept, r_value, p_value, std_err  = linregress(data['cpcp'], data['krpot'])
 
     fig, (a1, a2, a3) = plt.subplots(3, 1, figsize=(16, 12))
     fig.suptitle(f'Results from {runname.capitalize()} Investigation')
 
-    if runname == 'bz':
+    if runname == 'bz' or runname == 'bz_vsw750':
         a1.plot(data['runtime'], data['bz'], 'o-')
         a1.set_ylabel('IMF $B_z$')
     elif runname == 'vsw':
@@ -273,7 +285,7 @@ def plot_summary(runname):
     a3.set_ylabel('mhos')
 
     a4.plot(data['runtime'], data['gel'], 'o-')
-    a4.set_ylabel('GEL ($km$)')
+    a4.set_ylabel('GEL ($R_E$)')
 
     a5.plot(data['runtime'], data['geopot'], color='Blue',
             marker='o', label=r'Reconexus $\Phi$')
@@ -288,71 +300,52 @@ def plot_summary(runname):
 
     fig.tight_layout()
 
+
 def viscous_potential_plot(runname):
     '''
-    Given a results pickle, calculate the '''
-    
-
-def compare_gel_2times(runname, t1=dt.datetime(1998, 5, 4, 8, 0, 0),
-                       t2=dt.datetime(1998, 5, 5, 11, 0, 0)):
-    '''
-    Examine GEL dynamics between two times.
-
-    t1 and t2 should be datetimes. :P
+    Given a results pickle, calculate the difference between CPCP and Iono Footpoint
+    potentials to quantify viscous potential contribution. Plot this difference 
+    against the varying SW drivers (namely vsw and n).
     '''
 
     # Open the files we want:
     # Load a pickle with reconnexus stuff:
     with open(f'reconexus_results_{runname}.pkl', 'rb') as f:
         data = pickle.load(f)
+    
+    viscpot = data['cpcp'] - np.array(data['ifpot'])
 
-    # Shortcut vars:
-    dirrxn = runs[runname]['rxn_dir']
-    dirrun = runs[runname]['swmf_dir']
+    if runname == 'vsw':
+        xvar = data['u']
+        xlabel = '$V_{sw}$ (km/s)'
+        mask = (data['runtime'] >= 6) & (data['runtime'] <= 22)
+        pram = data['pram'][mask]
+        viscpot = viscpot[mask]
+    elif runname == 'n':
+        xvar = data['n']
+        pram = data['pram']
+        viscpot = viscpot
+    else:
+        raise ValueError(f"Unknown runname: {runname!r}. Must be 'vsw' or 'n'.")
 
-    # Open our RxN lines, separators, and MHD files:
-    strtime = f"{t1:%Y%m%d-%H%M%S}"
-    lp1 = reconx.read_nulls(dirrxn + f"null_line_pls_n01_001_e{strtime}.dat")
-    ln1 = reconx.read_nulls(dirrxn + f"null_line_neg_n01_001_e{strtime}.dat")
-    sep1 = reconx.read_separator(dirrxn + f"Separator_e{strtime}.dat")
-    mhd1 = bats.Bats2d(dirrun + f"GM/z=0_mhd_2_e{strtime}-000.out")
-    mhd1.calc_j()
+    # Calculate linear regression for viscous potential vs RAM pressure
+    slope, intercept, r_value, p_value, std_err = linregress(pram, viscpot)
+    xfit = np.linspace(np.min(pram), np.max(pram), 100)
+    yfit = slope*xfit + intercept
 
-    strtime = f"{t2:%Y%m%d-%H%M%S}"
-    lp2 = reconx.read_nulls(dirrxn + f"null_line_pls_n01_001_e{strtime}.dat")
-    ln2 = reconx.read_nulls(dirrxn + f"null_line_neg_n01_001_e{strtime}.dat")
-    sep2 = reconx.read_separator(dirrxn + f"Separator_e{strtime}.dat")
-    mhd2 = bats.Bats2d(dirrun + f"GM/z=0_mhd_2_e{strtime}-000.out")
+    fig, a1 = plt.subplots(figsize=(8,6))
+    a1.scatter(pram, viscpot, marker='o', label='Simulation Data')
 
-    kwargs = {'ylim': [-45, 15], 'xlim': [-25, 25], 'cmap': 'viridis', 'nlev': 51,
-           'dolog': True, 'extend': 'max', 'add_cbar': True}
+    a1.plot(xfit, yfit,  '--', color='Black', label=(f'Fit: $\Delta\Phi$ = {slope:.3f} {runname} + {intercept:.2f}\n'f'R = {r_value:.2f}'))
+    a1.set_xlabel('$P_{dyn}$ (nPa)', fontsize=16)
+    a1.set_ylabel('$\\Phi_{CPCP}-\\Phi_{IFP}$ (kV)', fontsize=16)
+    a1.set_title('Excess Potential vs Dynamic Pressure', fontsize=18)
 
+    a1.grid(True)
+    a1.legend()
 
-    fig = plt.figure(figsize=[16, 12])
-    a1, a2 = fig.add_subplot(2, 2, 1), fig.add_subplot(2, 2, 2, projection='3d')
-    a3 = fig.add_subplot(2, 1, 2)
-    mhd1.add_contour('y', 'x', 'j', target=a1, loc=121, **kwargs)
-    a1.plot(lp1['Y'], lp1['X'], 'ro', ln1['Y'], ln1['X'],
-            'ro', label=f'Time 1 = {t1:%d-%H%M}')
-    a1.plot(lp2['Y'], lp2['X'], 'bo', ln2['Y'], ln2['X'],
-            'bo', label=f'Time 2 = {t2:%d-%H%M}')
-    a1.plot(sep1['Y'], sep1['X'], 'mx', label='Separator 1')
-    a1.plot(sep2['Y'], sep2['X'], 'gx', label='Separator 2')
-    a1.legend(loc='best')
+    plt.tight_layout()
 
-    a2.plot(lp1['X'], lp1['Y'], lp1['Z'], '.r')
-    a2.plot(ln1['X'], ln1['Y'], ln1['Z'], '.r', label='Time 1')
-    a2.plot(lp2['X'], lp2['Y'], lp2['Z'], '.b')
-    a2.plot(ln2['X'], ln2['Y'], ln2['Z'], '.b', label='Time 2')
-    a2.plot(sep1['X'], sep1['Y'], sep1['Z'], 'mx', label='Separator 1')
-    a2.plot(sep2['X'], sep2['Y'], sep2['Z'], 'gx', label='Separator 2')
-
-    a3.plot(data['runtime'], data['geopot'], 'o-', label=r'$\Phi_{RECONEXUS}$')
-    a3.plot(data['runtime'], data['cpcp'], 'o-', label='CPCP')
-    a3.plot(data['runtime'], data['krpot'], 'o-', label=r'$\Phi_{K&R}$')
-    a3.plot(data['runtime'], data['ifpot'], 'o-', label=r'$\Phi_{IFP}$')
-    a3.legend(loc='best')
-    a3.set_ylabel(r'$\Phi$ ($kV$)')
 
 def compare_gel_2times(runname, t1=dt.datetime(1998, 5, 4, 0, 0, 0),
                        t2=dt.datetime(1998, 5, 5, 11, 0, 0)):
@@ -369,21 +362,21 @@ def compare_gel_2times(runname, t1=dt.datetime(1998, 5, 4, 0, 0, 0),
 
     # Shortcut vars:
     dirrxn = runs[runname]['rxn_dir']
-    dirrun = runs[runname]['swmf_dir']
+    dirswmf = runs[runname]['swmf_dir']
 
     # Open our RxN lines, separators, and MHD files:
     strtime = f"{t1:%Y%m%d-%H%M%S}"
     lp1 = reconx.read_nulls(dirrxn + f"null_line_pls_n01_001_e{strtime}.dat")
     ln1 = reconx.read_nulls(dirrxn + f"null_line_neg_n01_001_e{strtime}.dat")
     sep1 = reconx.read_separator(dirrxn + f"Separator_e{strtime}.dat")
-    mhd1 = bats.Bats2d(dirrun + f"GM/z=0_mhd_2_e{strtime}-000.out")
+    mhd1 = bats.Bats2d(dirswmf + f"GM/z=0_mhd_2_e{strtime}-000.out")
     mhd1.calc_j()
 
     strtime = f"{t2:%Y%m%d-%H%M%S}"
     lp2 = reconx.read_nulls(dirrxn + f"null_line_pls_n01_001_e{strtime}.dat")
     ln2 = reconx.read_nulls(dirrxn + f"null_line_neg_n01_001_e{strtime}.dat")
     sep2 = reconx.read_separator(dirrxn + f"Separator_e{strtime}.dat")
-    mhd2 = bats.Bats2d(dirrun + f"GM/z=0_mhd_2_e{strtime}-000.out")
+    mhd2 = bats.Bats2d(dirswmf + f"GM/z=0_mhd_2_e{strtime}-000.out")
 
     kwargs = {'ylim': [-45, 15], 'xlim': [-25, 25], 'cmap': 'viridis',
               'nlev': 51, 'dolog': True, 'extend': 'max', 'add_cbar': True}
@@ -416,7 +409,10 @@ def compare_gel_2times(runname, t1=dt.datetime(1998, 5, 4, 0, 0, 0),
             linestyle='-', label=r'$\Phi_{K&R}$')
     a3.plot(data['runtime'], data['ifpot'], color='Green', marker='o', 
             linestyle='-', label=r'$\Phi_{IFP}$')
+    a3.set_xlabel(r'Hours from Simulation Start (S.T.)')
+    a3.set_ylabel(r'$\Phi$ ($kV$)')
     a3.legend(loc='best')
+
 
 def compare_2runs_2times(runname1, runname2, t1=dt.datetime(1998, 5, 4, 8, 0, 0),
                        t2=dt.datetime(1998, 5, 5, 11, 0, 0)):
@@ -448,8 +444,8 @@ def compare_2runs_2times(runname1, runname2, t1=dt.datetime(1998, 5, 4, 8, 0, 0)
     lpt1r2 = reconx.read_nulls(dirrxn2 + f"null_line_pls_n01_001_e{strtime}.dat")
     lnt1r2 = reconx.read_nulls(dirrxn2 + f"null_line_neg_n01_001_e{strtime}.dat")
     sept1r2 = reconx.read_separator(dirrxn2 + f"Separator_e{strtime}.dat")
-    #mhdt1r2 = bats.Bats2d(dirswmf2 + f"GM/z=0_mhd_2_e{strtime}-000.out")
-    #mhdt1r2.calc_j()
+    mhdt1r2 = bats.Bats2d(dirswmf2 + f"GM/z=0_mhd_2_e{strtime}-000.out")
+    mhdt1r2.calc_j()
 
     strtime = f"{t2:%Y%m%d-%H%M%S}"
     lpt2r1 = reconx.read_nulls(dirrxn1 + f"null_line_pls_n01_001_e{strtime}.dat")
@@ -461,8 +457,8 @@ def compare_2runs_2times(runname1, runname2, t1=dt.datetime(1998, 5, 4, 8, 0, 0)
     lpt2r2 = reconx.read_nulls(dirrxn2 + f"null_line_pls_n01_001_e{strtime}.dat")
     lnt2r2 = reconx.read_nulls(dirrxn2 + f"null_line_neg_n01_001_e{strtime}.dat")
     sept2r2 = reconx.read_separator(dirrxn2 + f"Separator_e{strtime}.dat")
-    #mhdt2r2 = bats.Bats2d(dirswmf2 + f"GM/z=0_mhd_2_e{strtime}-000.out")
-    #mhdt2r2.calc_j()
+    mhdt2r2 = bats.Bats2d(dirswmf2 + f"GM/z=0_mhd_2_e{strtime}-000.out")
+    mhdt2r2.calc_j()
 
     kwargs = {'ylim': [-45, 15], 'xlim': [-25, 25], 'cmap': 'viridis', 'nlev': 51,
         'dolog': True, 'extend': 'max', 'add_cbar': True}
@@ -471,7 +467,7 @@ def compare_2runs_2times(runname1, runname2, t1=dt.datetime(1998, 5, 4, 8, 0, 0)
 
     a1, a2 = fig.add_subplot(1, 2, 1), fig.add_subplot(1, 2, 2, projection='3d')
     mhdt1r1.add_contour('y', 'x', 'j', target=a1, loc=121, **kwargs)
-    #mhdt1r2.add_contour('y', 'x', 'j', target=a1, loc=121, **kwargs, alpha=0.5)
+    mhdt1r2.add_contour('y', 'x', 'j', target=a1, loc=121, **kwargs, alpha=0.5)
     a1.plot(lpt1r1['Y'], lpt1r1['X'], '^r', label=f'{runname1}, {t1:%d-%H%M}')
     a1.plot(lnt1r1['Y'], lnt1r1['X'], '^r') 
     a1.plot(lpt2r1['Y'], lpt2r1['X'], '^b', label=f'{runname1}, {t2:%d-%H%M}')
@@ -506,3 +502,45 @@ def compare_2runs_2times(runname1, runname2, t1=dt.datetime(1998, 5, 4, 8, 0, 0)
             label=f'{runname2}, {t1:%d-%H%M}')
     a2.plot(sept2r2['X'], sept2r2['Y'], sept2r2['Z'], '^y', 
             label=f'{runname2}, {t2:%d-%H%M}')
+
+def plot_nulls_and_separator(runname, t=dt.datetime(1998, 5, 4, 0, 0, 0)):
+    '''
+    Given a runname, retrieve the null and separator file to plot the nulls and 
+    endpoints in 3D
+    '''
+
+    dirrxn, dirswmf = runs[runname]['rxn_dir'], runs[runname]['swmf_dir']
+
+    strtime = f"{t:%Y%m%d-%H%M%S}"
+
+    mhdz = bats.Bats2d(dirswmf + f"GM/z=0_mhd_2_e{strtime}-000.out")
+    mhdz.calc_j()
+
+    # Open our RxN lines, separators, and MHD files:
+    strtime = f"{t:%Y%m%d-%H%M%S}"
+    pnulls = reconx.read_nulls(dirrxn + f"PlusNulls_e{strtime}.dat")
+    nnulls = reconx.read_nulls(dirrxn + f"NegNulls_e{strtime}.dat")
+
+    #sep = reconx.read_separator(dirrxn + f"Separator_e{strtime}.dat")
+    ptrace = reconx.read_nulls(dirrxn + f"null_line_pls_n01_001_e{strtime}.dat", reorder=True)
+    ntrace = reconx.read_nulls(dirrxn + f"null_line_neg_n01_001_e{strtime}.dat", reorder=True)
+
+    fig = plt.figure(figsize=[16, 16])
+    a1, a2 = fig.add_subplot(1, 2, 1, projection='3d'), fig.add_subplot(1,2,2)
+    mhdz.add_contour('y', 'x', 'j', dolog=True, target=a2, loc=112, ylim=[-60,20])
+    a2.plot(pnulls['Y'], pnulls['X'], 'xr')
+    a2.plot(nnulls['Y'], nnulls['X'], 'xb')
+    a1.plot(0, 0, 0, 'ok')
+    a1.plot(ptrace['X'], ptrace['Y'], ptrace['Z'], '.r')
+    a1.plot(ntrace['X'], ntrace['Y'], ntrace['Z'], '.b')
+    a1.plot(pnulls['X'], pnulls['Y'], pnulls['Z'], 'xr')
+    a1.plot(nnulls['X'], nnulls['Y'], nnulls['Z'], 'xb')
+    a1.set_aspect('equal')
+    #a1.plot(sep['X'], sep['Y'], sep['Z'], '.b')
+    a1.set_xlabel('X')
+    a1.set_ylabel('Y')
+    a1.set_zlabel('Z')
+    a1.set_title(f"At time= {t}")
+    fig.tight_layout()
+
+        #plt.savefig()
